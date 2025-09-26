@@ -25,8 +25,14 @@ impl FieldElement {
         Ok(FieldElement { num, prime })
     }
 
-    pub fn pow(exponent: BigUint) -> Result<Self, String> {
-        
+    pub fn pow(self, exponent: BigUint) -> Self {
+        let modified_exponent = &exponent % (&self.prime - BigUint::from(1u32));
+        let num = self.num.modpow(&modified_exponent, &self.prime);
+
+        FieldElement {
+            num: num,
+            prime: self.prime,
+        }
     }
 }
 
@@ -77,7 +83,7 @@ impl Mul for FieldElement {
 
         FieldElement {
             num,
-            prime: self.prime
+            prime: self.prime,
         }
     }
 }
@@ -90,11 +96,16 @@ impl Div for FieldElement {
             panic!("Two elements are not in the same field")
         }
 
-        let num = (self.num / rhs.num) % &self.prime;
+        if rhs.num == BigUint::from(0u32) {
+            panic!("Division by zero")
+        }
+
+        let p_minus_2 = &self.prime - BigUint::from(2u32);
+        let num = (self.num * rhs.num.modpow(&p_minus_2, &self.prime)) % &self.prime;
 
         FieldElement {
             num,
-            prime: self.prime
+            prime: self.prime,
         }
     }
 }

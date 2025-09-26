@@ -110,6 +110,20 @@ impl Div for FieldElement {
     }
 }
 
+#[cfg(test)]
+mod finite_field_tests {
+    use super::*;
+
+    #[test]
+    fn test_new_and_eq() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let element2 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
+
+        assert_ne!(element1, element2);
+    }
+}
+
 fn main() {
     println!("Hello, world!");
 }

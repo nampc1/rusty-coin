@@ -2,6 +2,13 @@ use std::ops::{Add, Div, Mul, Sub};
 
 use num_bigint::BigUint;
 
+#[derive(Debug)]
+pub enum FieldElementError {
+    InvalidNum(BigUint, BigUint),
+    InvalidPrime(BigUint),
+    NotSameField,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldElement {
     num: BigUint,
@@ -9,17 +16,13 @@ pub struct FieldElement {
 }
 
 impl FieldElement {
-    pub fn new(num: BigUint, prime: BigUint) -> Result<Self, String> {
+    pub fn new(num: BigUint, prime: BigUint) -> Result<Self, FieldElementError> {
         if num >= prime {
-            return Err(format!(
-                "Num {} is not in field range 0 to {}",
-                num,
-                &prime - 1u32 // prime - 1u32 would also work thanks to "auto borrowing"
-            ));
+            return Err(FieldElementError::InvalidNum(num, prime));
         }
 
         if prime <= BigUint::from(1u32) {
-            return Err("Invalid prime".to_string());
+            return Err(FieldElementError::InvalidPrime(prime));
         }
 
         Ok(FieldElement { num, prime })
@@ -30,7 +33,7 @@ impl FieldElement {
         let num = self.num.modpow(&modified_exponent, &self.prime);
 
         FieldElement {
-            num: num,
+            num,
             prime: self.prime,
         }
     }
@@ -119,8 +122,62 @@ mod finite_field_tests {
         let p = BigUint::from(13u32);
         let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
         let element2 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
+        let element3 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
 
         assert_ne!(element1, element2);
+        assert_eq!(element1, element3);
+    }
+
+    #[test]
+    fn test_add() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let element2 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
+        let result = FieldElement::new(BigUint::from(5u32), p.clone()).unwrap();
+
+        assert_eq!(element1 + element2, result);
+    }
+
+    #[test]
+    fn test_subtract() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
+        let element3 = FieldElement::new(BigUint::from(7u32), p.clone()).unwrap();
+        let result1 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
+        let result2 = FieldElement::new(BigUint::from(5u32), p.clone()).unwrap();
+
+        assert_eq!(element1 - element2.clone(), result1);
+        assert_eq!(element2 - element3, result2);
+    }
+
+    #[test]
+    fn test_mul() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
+        let result = FieldElement::new(BigUint::from(11u32), p.clone()).unwrap();
+
+        assert_eq!(element1 * element2.clone(), result);
+    }
+
+    #[test]
+    fn test_div() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
+        let result = FieldElement::new(BigUint::from(11u32), p.clone()).unwrap();
+
+        assert_eq!(element1 / element2.clone(), result);
+    }
+
+    #[test]
+    fn test_pow() {
+        let p = BigUint::from(13u32);
+        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
+        let result = FieldElement::new(BigUint::from(1u32), p.clone()).unwrap();
+
+        assert_eq!(element1.pow(BigUint::from(12u32)), result);
     }
 }
 

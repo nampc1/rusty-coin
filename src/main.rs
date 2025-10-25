@@ -1,186 +1,32 @@
-use std::ops::{Add, Div, Mul, Sub};
+mod finite_field;
 
+use crate::finite_field::FieldElement;
 use num_bigint::BigUint;
 
-#[derive(Debug)]
-pub enum FieldElementError {
-    InvalidNum(BigUint, BigUint),
-    InvalidPrime(BigUint),
-    NotSameField,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FieldElement {
-    num: BigUint,
-    prime: BigUint,
-}
-
-impl FieldElement {
-    pub fn new(num: BigUint, prime: BigUint) -> Result<Self, FieldElementError> {
-        if num >= prime {
-            return Err(FieldElementError::InvalidNum(num, prime));
-        }
-
-        if prime <= BigUint::from(1u32) {
-            return Err(FieldElementError::InvalidPrime(prime));
-        }
-
-        Ok(FieldElement { num, prime })
-    }
-
-    pub fn pow(self, exponent: BigUint) -> Self {
-        let modified_exponent = &exponent % (&self.prime - BigUint::from(1u32));
-        let num = self.num.modpow(&modified_exponent, &self.prime);
-
-        FieldElement {
-            num,
-            prime: self.prime,
-        }
-    }
-}
-
-impl Add for FieldElement {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        if self.prime != rhs.prime {
-            panic!("Two elements are not in the same field")
-        }
-
-        let num = (self.num + rhs.num) % &self.prime;
-
-        FieldElement {
-            num,
-            prime: self.prime,
-        }
-    }
-}
-
-impl Sub for FieldElement {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        if self.prime != rhs.prime {
-            panic!("Two elements are not in the same field")
-        }
-
-        // adding prime before subtracting to make sure the result is greater than 0
-        let num = (self.num + &self.prime - rhs.num) % &self.prime;
-
-        FieldElement {
-            num,
-            prime: self.prime,
-        }
-    }
-}
-
-impl Mul for FieldElement {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        if self.prime != rhs.prime {
-            panic!("Two elements are not in the same field")
-        }
-
-        let num = (self.num * rhs.num) % &self.prime;
-
-        FieldElement {
-            num,
-            prime: self.prime,
-        }
-    }
-}
-
-impl Div for FieldElement {
-    type Output = Self;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        if self.prime != rhs.prime {
-            panic!("Two elements are not in the same field")
-        }
-
-        if rhs.num == BigUint::from(0u32) {
-            panic!("Division by zero")
-        }
-
-        let p_minus_2 = &self.prime - BigUint::from(2u32);
-        let num = (self.num * rhs.num.modpow(&p_minus_2, &self.prime)) % &self.prime;
-
-        FieldElement {
-            num,
-            prime: self.prime,
-        }
-    }
-}
-
-#[cfg(test)]
-mod finite_field_tests {
-    use super::*;
-
-    #[test]
-    fn test_new_and_eq() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let element2 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
-        let element3 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-
-        assert_ne!(element1, element2);
-        assert_eq!(element1, element3);
-    }
-
-    #[test]
-    fn test_add() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let element2 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
-        let result = FieldElement::new(BigUint::from(5u32), p.clone()).unwrap();
-
-        assert_eq!(element1 + element2, result);
-    }
-
-    #[test]
-    fn test_subtract() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
-        let element3 = FieldElement::new(BigUint::from(7u32), p.clone()).unwrap();
-        let result1 = FieldElement::new(BigUint::from(3u32), p.clone()).unwrap();
-        let result2 = FieldElement::new(BigUint::from(5u32), p.clone()).unwrap();
-
-        assert_eq!(element1 - element2.clone(), result1);
-        assert_eq!(element2 - element3, result2);
-    }
-
-    #[test]
-    fn test_mul() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
-        let result = FieldElement::new(BigUint::from(11u32), p.clone()).unwrap();
-
-        assert_eq!(element1 * element2.clone(), result);
-    }
-
-    #[test]
-    fn test_div() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let element2 = FieldElement::new(BigUint::from(12u32), p.clone()).unwrap();
-        let result = FieldElement::new(BigUint::from(11u32), p.clone()).unwrap();
-
-        assert_eq!(element1 / element2.clone(), result);
-    }
-
-    #[test]
-    fn test_pow() {
-        let p = BigUint::from(13u32);
-        let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
-        let result = FieldElement::new(BigUint::from(1u32), p.clone()).unwrap();
-
-        assert_eq!(element1.pow(BigUint::from(12u32)), result);
-    }
-}
-
 fn main() {
-    println!("Hello, world!");
+    // Define a prime number for our field
+    let prime = BigUint::from(19u32);
+
+    // Create two field elements.
+    // The .unwrap() is safe here because we know the inputs are valid.
+    let a = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
+    let b = FieldElement::new(BigUint::from(12u32), prime.clone()).unwrap();
+
+    println!("Working with the finite field of order {}", prime);
+    println!("a = {}", a);
+    println!("b = {}", b);
+    println!("---");
+
+    // Perform some operations
+    let sum = a.clone() + b.clone();
+    println!("a + b = {}  (since 7 + 12 = 19, which is 0 mod 19)", sum);
+
+    let difference = a.clone() - b.clone();
+    println!(
+        "a - b = {} (since 7 - 12 = -5, which is 14 mod 19)",
+        difference
+    );
+
+    let product = a.clone() * b.clone();
+    println!("a * b = {} (since 7 * 12 = 84, which is 8 mod 19)", product);
 }

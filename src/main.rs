@@ -1,3 +1,4 @@
+mod elliptic_curve;
 mod finite_field;
 
 use crate::finite_field::FieldElement;

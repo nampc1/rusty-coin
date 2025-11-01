@@ -30,7 +30,6 @@ impl std::fmt::Display for FieldElementError {
 // interoperable with other Rust libraries and error-handling mechanisms.
 impl std::error::Error for FieldElementError {}
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldElement {
     num: BigUint,
@@ -72,6 +71,10 @@ impl FieldElement {
             num,
             prime: self.prime.clone(),
         }
+    }
+
+    pub fn get_prime(&self) -> BigUint {
+        self.prime.clone()
     }
 }
 
@@ -331,7 +334,7 @@ mod finite_field_tests {
         let element1 = FieldElement::new(BigUint::from(2u32), p.clone()).unwrap();
         let result = FieldElement::new(BigUint::from(1u32), p.clone()).unwrap();
 
-        assert_eq!(element1.pow(BigUint::from(12u32)), result);
+        assert_eq!(element1.pow(12u32), result);
     }
 
     #[test]

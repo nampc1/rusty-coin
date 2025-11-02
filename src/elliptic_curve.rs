@@ -1,18 +1,36 @@
-use std::ops::Add;
-
-use num_bigint::BigUint;
-
 use crate::finite_field::FieldElement;
+use std::ops::Add;
 
 #[derive(Debug)]
 pub enum PointError {
     NotOnCurve,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl std::fmt::Display for PointError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PointError::NotOnCurve => write!(f, "Point is not on the elliptic curve"),
+        }
+    }
+}
+
+impl std::error::Error for PointError {}
+
+// This enum follows the "make invalid states unrepresentable" pattern.
+// A point on an elliptic curve is either a finite point with both an x and a y
+// coordinate, or it is the point at infinity. By using an enum, we make it
+// impossible to represent an invalid state (e.g., a point with an x but no y).
+// This allows the compiler to prove our `match` statements are exhaustive,
+// making the code safer and more readable. See `note/04-making-states-unrepresentable.md`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PointKind {
+    Coordinates(FieldElement, FieldElement),
+    Infinity,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Point {
-    x: Option<FieldElement>,
-    y: Option<FieldElement>,
+    kind: PointKind,
     a: FieldElement,
     b: FieldElement,
 }
@@ -29,8 +47,7 @@ impl Point {
         }
 
         Ok(Point {
-            x: Some(x),
-            y: Some(y),
+            kind: PointKind::Coordinates(x, y),
             a,
             b,
         })
@@ -38,15 +55,55 @@ impl Point {
 
     pub fn new_at_infinity(a: FieldElement, b: FieldElement) -> Result<Point, PointError> {
         Ok(Point {
-            x: None,
-            y: None,
+            kind: PointKind::Infinity,
             a,
             b,
         })
     }
 
     pub fn is_at_infinity(&self) -> bool {
-        self.x == None && self.y == None
+        matches!(self.kind, PointKind::Infinity)
+    }
+}
+
+impl Add for &Point {
+    type Output = Point;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (&self.kind, &rhs.kind) {
+            (PointKind::Infinity, _) => rhs.clone(),
+            (_, PointKind::Infinity) => self.clone(),
+            (PointKind::Coordinates(x1, y1), PointKind::Coordinates(x2, y2)) => {
+                // Case 2: self.x == other.x and self.y == -other.y
+                // Self is the inverse of other, so the result is infinity
+                // This check also prevents division by zero in the chord method
+                if x1 == x2 && (y1 + y2).is_zero() {
+                    return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+                }
+
+                // Case 3: self == other (point doubling)
+                if self == rhs {
+                    // The tangent line is vertical
+                    if y1.is_zero() {
+                        return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+                    }
+
+                    // The tangent line intersects the curve at point -2P
+                    let slope = (x1.pow(2u32) * 3u32 + &self.a) / (y1 * 2u32);
+                    let x = slope.pow(2u32) - x1 * 2u32;
+                    let y = (slope * (x1 - &x)) - y1;
+
+                    return Point::new(x, y, self.a.clone(), self.b.clone()).unwrap();
+                }
+
+                // Case 4: self.x != other.x (chord method)
+                let slope = (y1 - y2) / (x1 - x2);
+                let x = slope.pow(2u32) - x1 - x2;
+                let y = slope * (x1 - &x) - y1;
+
+                Point::new(x, y, self.a.clone(), self.b.clone()).unwrap()
+            }
+        }
     }
 }
 
@@ -54,67 +111,152 @@ impl Add for Point {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        if self.a != rhs.a || self.b != rhs.b {
-            panic!("Cannot add two points on different curves")
+        &self + &rhs
+    }
+}
+
+impl Add<&Point> for Point {
+    type Output = Self;
+
+    fn add(self, rhs: &Point) -> Self::Output {
+        &self + rhs
+    }
+}
+
+impl Add<Point> for &Point {
+    type Output = Point;
+
+    fn add(self, rhs: Point) -> Self::Output {
+        self + &rhs
+    }
+}
+
+#[cfg(test)]
+mod elliptic_curve_tests {
+    use super::*;
+    use crate::finite_field::FieldElement;
+    use num_bigint::BigUint;
+
+    #[test]
+    fn test_point_creation() {
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
+
+        // Valid point (192, 105) on y^2 = x^3 + 7
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p1 = Point::new(x1, y1, a.clone(), b.clone());
+        assert!(p1.is_ok());
+
+        // Invalid point (42, 99) on y^2 = x^3 + 7
+        let x2 = FieldElement::new(BigUint::from(42u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(99u32), prime.clone()).unwrap();
+        let p2 = Point::new(x2, y2, a.clone(), b.clone());
+        assert!(p2.is_err());
+        match p2 {
+            Err(PointError::NotOnCurve) => (), // Expected error
+            _ => panic!("Expected NotOnCurve error"),
         }
+    }
 
-        // Case 1: point + infinity = point
-        if self.is_at_infinity() {
-            return rhs;
-        }
+    #[test]
+    fn test_point_at_infinity() {
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-        if rhs.is_at_infinity() {
-            return self;
-        }
+        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
+        assert!(p_inf.is_at_infinity());
 
-        // now, neither point is at infinity
+        let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p = Point::new(x, y, a, b).unwrap();
+        assert!(!p.is_at_infinity());
+    }
 
-        if let (Some(x1), Some(y1), Some(x2), Some(y2)) = (self.x, self.y, rhs.x, rhs.y) {
-            // Case 2: self.x == other.x and self.y == -other.y
-            // Self is the inverse of other, so the result is infinity
-            // This check also prevents division by zero in the chord method
-            let zero_element = FieldElement::new(BigUint::from(0u32), y1.get_prime()).unwrap();
-            if x1 == x2 && (&y1 + &y2 == zero_element) {
-                return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
-            }
+    #[test]
+    fn test_add_point_and_infinity() {
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-            // Case 3: self == other (point doubling)
-            if x1 == x2 && y1 == y2 && self.a == rhs.a && self.b == rhs.b {
-                // The tangent line is vertical
-                if y1 == zero_element {
-                    return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
-                }
+        let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p1 = Point::new(x, y, a.clone(), b.clone()).unwrap();
+        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
 
-                // The tangent line intersects the curve at point -2P
-                let slope = (x1.pow(2u32)
-                    * FieldElement::new(BigUint::from(3u32), y1.get_prime()).unwrap()
-                    + &self.a)
-                    / (&y1 * FieldElement::new(BigUint::from(3u32), y1.get_prime()).unwrap());
-                let x = slope.pow(2u32)
-                    - &x1 * FieldElement::new(BigUint::from(2u32), y1.get_prime()).unwrap();
-                let y = (slope * (x1 - &x)) - y1;
+        // p + infinity = p
+        let res1 = p1.clone() + p_inf.clone();
+        assert_eq!(res1, p1);
 
-                return Point {
-                    x: Some(x),
-                    y: Some(y),
-                    a: self.a.clone(),
-                    b: self.b.clone(),
-                };
-            }
+        // infinity + p = p
+        let res2 = p_inf + p1.clone();
+        assert_eq!(res2, p1);
+    }
 
-            // Case 4: self.x != other.x (chord method)
-            let slope = (&y1 - &y2) / (&x1 - &x2);
-            let x = slope.pow(2u32) - &x1 - &x2;
-            let y = slope * (x1 - &x) - y1;
+    #[test]
+    fn test_add_inverse_points() {
+        // Test P + (-P) = Infinity
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-            return Point {
-                x: Some(x),
-                y: Some(y),
-                a: self.a.clone(),
-                b: self.b.clone(),
-            };
-        } else {
-            unreachable!()
-        }
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
+
+        // -y mod p = -105 mod 223 = 118
+        let x2 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(118u32), prime.clone()).unwrap();
+        let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
+
+        let p_inf = Point::new_at_infinity(a, b).unwrap();
+        assert_eq!(p1 + p2, p_inf);
+    }
+
+    #[test]
+    fn test_add_chord_method() {
+        // Test P1 + P2 = P3 where x1 != x2
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
+
+        // P1 = (170, 142)
+        let x1 = FieldElement::new(BigUint::from(170u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(142u32), prime.clone()).unwrap();
+        let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
+
+        // P2 = (60, 139)
+        let x2 = FieldElement::new(BigUint::from(60u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(139u32), prime.clone()).unwrap();
+        let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
+
+        // Expected result P3 = (220, 181)
+        let x3 = FieldElement::new(BigUint::from(220u32), prime.clone()).unwrap();
+        let y3 = FieldElement::new(BigUint::from(181u32), prime.clone()).unwrap();
+        let p3 = Point::new(x3, y3, a, b).unwrap();
+
+        assert_eq!(p1 + p2, p3);
+    }
+
+    #[test]
+    fn test_add_point_doubling() {
+        // Test P + P = 2P
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
+
+        // P1 = (192, 105)
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
+
+        // Expected result 2*P1 = (49, 71)
+        let x2 = FieldElement::new(BigUint::from(49u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(71u32), prime.clone()).unwrap();
+        let p2 = Point::new(x2, y2, a, b).unwrap();
+
+        assert_eq!(p1.clone() + p1, p2);
     }
 }

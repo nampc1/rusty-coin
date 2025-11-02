@@ -54,7 +54,7 @@ impl FieldElement {
     // that can be converted into a `BigUint` (e.g., `u32`, `u64`), making it
     // easier for the caller. See `note/02-into-parameter-pattern.md` for more
     // details on this pattern.
-    pub fn pow<E: Into<BigUint>>(&self, exponent: E) -> Self {
+    pub fn pow<E: Into<BigUint>>(&self, exponent: E) -> FieldElement {
         let biguint_exponent = exponent.into();
 
         if biguint_exponent == BigUint::from(0u32) {
@@ -73,8 +73,12 @@ impl FieldElement {
         }
     }
 
-    pub fn get_prime(&self) -> BigUint {
-        self.prime.clone()
+    pub fn prime(&self) -> &BigUint {
+        &self.prime
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.num == BigUint::from(0u32)
     }
 }
 
@@ -116,15 +120,15 @@ impl Add for FieldElement {
     }
 }
 
-impl<'a> Add<&'a FieldElement> for FieldElement {
+impl Add<&FieldElement> for FieldElement {
     type Output = FieldElement;
 
-    fn add(self, rhs: &'a FieldElement) -> Self::Output {
+    fn add(self, rhs: &FieldElement) -> Self::Output {
         &self + rhs
     }
 }
 
-impl<'a> Add<FieldElement> for &'a FieldElement {
+impl Add<FieldElement> for &FieldElement {
     type Output = FieldElement;
 
     fn add(self, rhs: FieldElement) -> Self::Output {
@@ -158,15 +162,15 @@ impl Sub for FieldElement {
     }
 }
 
-impl<'a> Sub<&'a FieldElement> for FieldElement {
+impl Sub<&FieldElement> for FieldElement {
     type Output = FieldElement;
 
-    fn sub(self, rhs: &'a FieldElement) -> Self::Output {
+    fn sub(self, rhs: &FieldElement) -> Self::Output {
         &self - rhs
     }
 }
 
-impl<'a> Sub<FieldElement> for &'a FieldElement {
+impl Sub<FieldElement> for &FieldElement {
     type Output = FieldElement;
 
     fn sub(self, rhs: FieldElement) -> Self::Output {
@@ -199,7 +203,7 @@ impl Mul for FieldElement {
     }
 }
 
-impl<'a> Mul<FieldElement> for &'a FieldElement {
+impl Mul<FieldElement> for &FieldElement {
     type Output = FieldElement;
 
     fn mul(self, rhs: FieldElement) -> Self::Output {
@@ -207,10 +211,31 @@ impl<'a> Mul<FieldElement> for &'a FieldElement {
     }
 }
 
-impl<'a> Mul<&'a FieldElement> for FieldElement {
+impl Mul<&FieldElement> for FieldElement {
     type Output = Self;
 
-    fn mul(self, rhs: &'a FieldElement) -> Self::Output {
+    fn mul(self, rhs: &FieldElement) -> Self::Output {
+        &self * rhs
+    }
+}
+
+impl Mul<u32> for &FieldElement {
+    type Output = FieldElement;
+
+    fn mul(self, rhs: u32) -> Self::Output {
+        let num = (&self.num * rhs) % &self.prime;
+
+        FieldElement {
+            num,
+            prime: self.prime.clone(),
+        }
+    }
+}
+
+impl Mul<u32> for FieldElement {
+    type Output = Self;
+
+    fn mul(self, rhs: u32) -> Self::Output {
         &self * rhs
     }
 }
@@ -245,15 +270,15 @@ impl Div for FieldElement {
     }
 }
 
-impl<'a> Div<&'a FieldElement> for FieldElement {
+impl Div<&FieldElement> for FieldElement {
     type Output = Self;
 
-    fn div(self, rhs: &'a FieldElement) -> Self::Output {
+    fn div(self, rhs: &FieldElement) -> Self::Output {
         &self / rhs
     }
 }
 
-impl<'a> Div<FieldElement> for &'a FieldElement {
+impl Div<FieldElement> for &FieldElement {
     type Output = FieldElement;
 
     fn div(self, rhs: FieldElement) -> Self::Output {

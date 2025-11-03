@@ -288,4 +288,35 @@ mod elliptic_curve_tests {
 
         assert_eq!(p1.clone() + p1, p2);
     }
+
+    #[test]
+    fn test_scalar_multiplication() {
+        let prime = BigUint::from(223u32);
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
+
+        // P = (192, 105)
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
+        let p = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
+
+        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
+
+        // Test case 1: 0 * P = Infinity
+        let res1 = &p * BigUint::from(0u32);
+        assert_eq!(res1, p_inf, "0 * P should be Infinity");
+
+        // Test case 2: 1 * P = P
+        let res2 = &p * BigUint::from(1u32);
+        assert_eq!(res2, p, "1 * P should be P");
+
+        // Test case 3: 2 * P = P + P
+        // Expected result 2*P = (49, 71) from `test_add_point_doubling`
+        let x2 = FieldElement::new(BigUint::from(49u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(71u32), prime.clone()).unwrap();
+        let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
+
+        let res3 = &p * BigUint::from(2u32);
+        assert_eq!(res3, p2, "2 * P should be the same as point doubling");
+    }
 }

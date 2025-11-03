@@ -1,5 +1,7 @@
+use num_bigint::BigUint;
+
 use crate::finite_field::FieldElement;
-use std::ops::Add;
+use std::ops::{Add, Mul};
 
 #[derive(Debug)]
 pub enum PointError {
@@ -128,6 +130,33 @@ impl Add<Point> for &Point {
 
     fn add(self, rhs: Point) -> Self::Output {
         self + &rhs
+    }
+}
+
+impl Mul<BigUint> for &Point {
+    type Output = Point;
+
+    fn mul(self, rhs: BigUint) -> Self::Output {
+        let mut scalar = rhs;
+        let mut result = Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+        let mut current = self.clone();
+
+        while scalar > BigUint::from(0u32) {
+            if (&scalar & BigUint::from(1u32)) == BigUint::from(1u32) {
+                // --- Performance Note on Ownership ---
+                // We use `&result + &current` instead of `result + &current`.
+                // The latter would *move* `result` into the `add` function, which
+                // involves a `memcpy` of its stack data. By using references for
+                // both operands, we only pass pointers, which is more efficient
+                // inside a loop. See `note/05-moves-vs-borrows-in-ops.md`.
+                result = &result + &current;
+            }
+
+            current = &current + &current;
+            scalar >>= 1;
+        }
+
+        result
     }
 }
 

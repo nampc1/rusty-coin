@@ -3,12 +3,12 @@ use std::ops::{Add, Div, Mul, Sub};
 use num_bigint::BigUint;
 
 #[derive(Debug)]
-pub enum FieldElementError {
-    InvalidNum(BigUint, BigUint),
-    InvalidPrime(BigUint),
+pub enum FieldElementError<'a> {
+    InvalidNum(BigUint, &'a BigUint),
+    InvalidPrime(&'a BigUint),
 }
 
-impl std::fmt::Display for FieldElementError {
+impl<'a> std::fmt::Display for FieldElementError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FieldElementError::InvalidNum(num, prime) => write!(
@@ -28,21 +28,26 @@ impl std::fmt::Display for FieldElementError {
 // It requires `Debug` and `Display` to be implemented first (as supertraits).
 // This allows our error to be used with `?` and `Box<dyn Error>`, making it
 // interoperable with other Rust libraries and error-handling mechanisms.
-impl std::error::Error for FieldElementError {}
+impl<'a> std::error::Error for FieldElementError<'a> {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FieldElement {
+// A `FieldElement` is generic over a lifetime `'a`. It does not own its prime
+// number but instead holds a reference (`&'a BigUint`). This is a crucial
+// performance optimization that allows many elements in the same field to share a
+// single copy of the prime, avoiding repeated memory allocations.
+// See `note/07-borrowing-shared-data.md` for a detailed explanation.
+pub struct FieldElement<'a> {
     num: BigUint,
-    prime: BigUint,
+    prime: &'a BigUint,
 }
 
-impl FieldElement {
-    pub fn new(num: BigUint, prime: BigUint) -> Result<Self, FieldElementError> {
-        if num >= prime {
+impl<'a> FieldElement<'a> {
+    pub fn new(num: BigUint, prime: &'a BigUint) -> Result<Self, FieldElementError> {
+        if num >= *prime {
             return Err(FieldElementError::InvalidNum(num, prime));
         }
 
-        if prime <= BigUint::from(1u32) {
+        if *prime <= BigUint::from(1u32) {
             return Err(FieldElementError::InvalidPrime(prime));
         }
 
@@ -60,21 +65,21 @@ impl FieldElement {
         if biguint_exponent == BigUint::from(0u32) {
             return FieldElement {
                 num: BigUint::from(1u32),
-                prime: self.prime.clone(),
+                prime: self.prime,
             };
         }
 
-        let modified_exponent = biguint_exponent % (&self.prime - BigUint::from(1u32));
-        let num = self.num.modpow(&modified_exponent, &self.prime);
+        let modified_exponent = biguint_exponent % (self.prime - BigUint::from(1u32));
+        let num = self.num.modpow(&modified_exponent, self.prime);
 
         FieldElement {
             num,
-            prime: self.prime.clone(),
+            prime: self.prime,
         }
     }
 
     pub fn prime(&self) -> &BigUint {
-        &self.prime
+        self.prime
     }
 
     pub fn is_zero(&self) -> bool {
@@ -95,24 +100,24 @@ impl FieldElement {
 // This pattern is repeated for `Sub`, `Mul`, and `Div`. A macro could be used
 // to reduce this boilerplate in the future. See `note/01-operator-overloading.md`
 // for more details.
-impl Add for &FieldElement {
-    type Output = FieldElement;
+impl<'a> Add for &FieldElement<'a> {
+    type Output = FieldElement<'a>;
 
     fn add(self, rhs: Self) -> Self::Output {
         if self.prime != rhs.prime {
             panic!("Two elements are not in the same field")
         }
 
-        let num = (&self.num + &rhs.num) % &self.prime;
+        let num = (&self.num + &rhs.num) % self.prime;
 
         FieldElement {
             num,
-            prime: self.prime.clone(),
+            prime: self.prime,
         }
     }
 }
 
-impl Add for FieldElement {
+impl<'a> Add for FieldElement<'a> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -120,18 +125,18 @@ impl Add for FieldElement {
     }
 }
 
-impl Add<&FieldElement> for FieldElement {
-    type Output = FieldElement;
+impl<'a> Add<&FieldElement<'a>> for FieldElement<'a> {
+    type Output = FieldElement<'a>;
 
-    fn add(self, rhs: &FieldElement) -> Self::Output {
+    fn add(self, rhs: &FieldElement<'a>) -> Self::Output {
         &self + rhs
     }
 }
 
-impl Add<FieldElement> for &FieldElement {
-    type Output = FieldElement;
+impl<'a> Add<FieldElement<'a>> for &FieldElement<'a> {
+    type Output = FieldElement<'a>;
 
-    fn add(self, rhs: FieldElement) -> Self::Output {
+    fn add(self, rhs: FieldElement<'a>) -> Self::Output {
         self + &rhs
     }
 }

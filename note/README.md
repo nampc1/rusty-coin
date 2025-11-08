@@ -9,3 +9,5 @@ This directory contains documents that record key design decisions and architect
 3. Error Handling: The `unwrap()` Dilemma
 4. Making Invalid States Unrepresentable
 5. Moves vs. Borrows in Operator Implementations
+6. Lazy Static Initialization
+7. Architectural Refactor: Borrowing vs. Owning Shared Data

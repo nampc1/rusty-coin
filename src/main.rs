@@ -1,5 +1,6 @@
 mod elliptic_curve;
 mod finite_field;
+mod secp256k1;
 
 use crate::finite_field::FieldElement;
 use num_bigint::BigUint;

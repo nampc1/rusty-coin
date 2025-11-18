@@ -19,13 +19,13 @@ static S256_PRIME: LazyLock<BigUint> = LazyLock::new(|| {
   });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct S256FieldElement {
-  element: FieldElement
+pub struct S256FieldElement<'a> {
+  element: FieldElement<'a>
 }
 
-impl S256FieldElement {
-  fn new(num: BigUint) -> Result<Self, FieldElementError> {
-    let element = FieldElement::new(num, S256_PRIME.clone()).unwrap();
+impl<'a> S256FieldElement<'a> {
+  fn new(num: BigUint) -> Result<Self, FieldElementError<'a>> {
+    let element = FieldElement::new(num, &S256_PRIME).unwrap();
 
     Ok(S256FieldElement {
       element
@@ -34,9 +34,9 @@ impl S256FieldElement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct S256Point {
-  point: Point,
-  a: S256FieldElement,
-  b: S256FieldElement,
+pub struct S256Point<'a> {
+  point: Point<'a>,
+  a: S256FieldElement<'a>,
+  b: S256FieldElement<'a>,
   n: BigUint
 }

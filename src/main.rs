@@ -11,8 +11,8 @@ fn main() {
 
     // Create two field elements.
     // The .unwrap() is safe here because we know the inputs are valid.
-    let a = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
-    let b = FieldElement::new(BigUint::from(12u32), prime.clone()).unwrap();
+    let a = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+    let b = FieldElement::new(BigUint::from(12u32), &prime).unwrap();
 
     println!("Working with the finite field of order {}", prime);
     println!("a = {}", a);

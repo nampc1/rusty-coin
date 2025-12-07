@@ -55,6 +55,10 @@ impl FieldElement {
         Ok(FieldElement { num, prime: prime_arc })
     }
 
+    pub fn num(&self) -> &BigUint {
+        &self.num
+    }
+
     // This method uses the "Into Parameter" pattern for ergonomic API design.
     // By using a generic `E: Into<BigUint>`, this function can accept any type
     // that can be converted into a `BigUint` (e.g., `u32`, `u64`), making it
@@ -205,7 +209,7 @@ impl Mul for FieldElement {
     }
 }
 
-impl<'a> Mul<FieldElement> for &FieldElement {
+impl Mul<FieldElement> for &FieldElement {
     type Output = FieldElement;
 
     fn mul(self, rhs: FieldElement) -> Self::Output {
@@ -255,7 +259,7 @@ impl Div for &FieldElement {
         }
 
         let p_minus_2 = &*self.prime - BigUint::from(2u32);
-        let num = (&self.num * rhs.num.modpow(&p_minus_2, &*self.prime)) % &*self.prime;
+        let num = (&self.num * rhs.num.modpow(&p_minus_2, &self.prime)) % &*self.prime;
 
         FieldElement {
             num,

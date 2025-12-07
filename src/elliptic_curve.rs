@@ -25,25 +25,25 @@ impl std::error::Error for PointError {}
 // This allows the compiler to prove our `match` statements are exhaustive,
 // making the code safer and more readable. See `note/04-making-states-unrepresentable.md`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum PointKind<'a> {
-    Coordinates(FieldElement<'a>, FieldElement<'a>),
+enum PointKind {
+    Coordinates(FieldElement, FieldElement),
     Infinity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Point<'a> {
-    kind: PointKind<'a>,
-    a: FieldElement<'a>,
-    b: FieldElement<'a>,
+pub struct Point {
+    kind: PointKind,
+    a: FieldElement,
+    b: FieldElement,
 }
 
-impl<'a> Point<'a> {
+impl Point {
     pub fn new(
-        x: FieldElement<'a>,
-        y: FieldElement<'a>,
-        a: FieldElement<'a>,
-        b: FieldElement<'a>,
-    ) -> Result<Point<'a>, PointError> {
+        x: FieldElement,
+        y: FieldElement,
+        a: FieldElement,
+        b: FieldElement,
+    ) -> Result<Point, PointError> {
         if y.pow(2u32) != x.pow(3u32) + &a * &x + &b {
             return Err(PointError::NotOnCurve);
         }
@@ -56,9 +56,9 @@ impl<'a> Point<'a> {
     }
 
     pub fn new_at_infinity(
-        a: FieldElement<'a>,
-        b: FieldElement<'a>,
-    ) -> Result<Point<'a>, PointError> {
+        a: FieldElement,
+        b: FieldElement,
+    ) -> Result<Point, PointError> {
         Ok(Point {
             kind: PointKind::Infinity,
             a,
@@ -71,10 +71,10 @@ impl<'a> Point<'a> {
     }
 }
 
-impl<'a> Add for &Point<'a> {
-    type Output = Point<'a>;
+impl Add for &Point {
+    type Output = Point;
 
-    fn add(self, rhs: &Point<'a>) -> Self::Output {        
+    fn add(self, rhs: &Point) -> Self::Output {        
         match (&self.kind, &rhs.kind) {
             (PointKind::Infinity, _) => rhs.clone(),
             (_, PointKind::Infinity) => self.clone(),
@@ -112,7 +112,7 @@ impl<'a> Add for &Point<'a> {
     }
 }
 
-impl<'a> Add for Point<'a> {
+impl Add for Point {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -120,24 +120,24 @@ impl<'a> Add for Point<'a> {
     }
 }
 
-impl<'a> Add<&Point<'a>> for Point<'a> {
+impl Add<&Point> for Point {
     type Output = Self;
 
-    fn add(self, rhs: &Point<'a>) -> Self::Output {
+    fn add(self, rhs: &Point) -> Self::Output {
         &self + rhs
     }
 }
 
-impl<'a> Add<Point<'a>> for &Point<'a> {
-    type Output = Point<'a>;
+impl Add<Point> for &Point {
+    type Output = Point;
 
-    fn add(self, rhs: Point<'a>) -> Self::Output {
+    fn add(self, rhs: Point) -> Self::Output {
         self + &rhs
     }
 }
 
-impl<'a> Mul<BigUint> for &Point<'a> {
-    type Output = Point<'a>;
+impl Mul<BigUint> for &Point {
+    type Output = Point;
 
     fn mul(self, rhs: BigUint) -> Self::Output {
         let mut scalar = rhs;
@@ -165,25 +165,27 @@ impl<'a> Mul<BigUint> for &Point<'a> {
 
 #[cfg(test)]
 mod elliptic_curve_tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::finite_field::FieldElement;
     use num_bigint::BigUint;
 
     #[test]
     fn test_point_creation() {
-        let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let prime = Arc::new(BigUint::from(223u32));
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
         // Valid point (192, 105) on y^2 = x^3 + 7
-        let x1 = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y1 = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p1 = Point::new(x1, y1, a.clone(), b.clone());
         assert!(p1.is_ok());
 
         // Invalid point (42, 99) on y^2 = x^3 + 7
-        let x2 = FieldElement::new(BigUint::from(42u32), &prime).unwrap();
-        let y2 = FieldElement::new(BigUint::from(99u32), &prime).unwrap();
+        let x2 = FieldElement::new(BigUint::from(42u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(99u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a.clone(), b.clone());
         assert!(p2.is_err());
         match p2 {
@@ -195,14 +197,14 @@ mod elliptic_curve_tests {
     #[test]
     fn test_point_at_infinity() {
         let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
         let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
         assert!(p_inf.is_at_infinity());
 
-        let x = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p = Point::new(x, y, a, b).unwrap();
         assert!(!p.is_at_infinity());
     }
@@ -210,11 +212,11 @@ mod elliptic_curve_tests {
     #[test]
     fn test_add_point_and_infinity() {
         let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-        let x = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p1 = Point::new(x, y, a.clone(), b.clone()).unwrap();
         let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
 
@@ -230,17 +232,17 @@ mod elliptic_curve_tests {
     #[test]
     fn test_add_inverse_points() {
         // Test P + (-P) = Infinity
-        let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let prime = Arc::new(BigUint::from(223u32));
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-        let x1 = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y1 = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
 
         // -y mod p = -105 mod 223 = 118
-        let x2 = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y2 = FieldElement::new(BigUint::from(118u32), &prime).unwrap();
+        let x2 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(118u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
 
         let p_inf = Point::new_at_infinity(a, b).unwrap();
@@ -250,23 +252,23 @@ mod elliptic_curve_tests {
     #[test]
     fn test_add_chord_method() {
         // Test P1 + P2 = P3 where x1 != x2
-        let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let prime = Arc::new(BigUint::from(223u32));
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
         // P1 = (170, 142)
-        let x1 = FieldElement::new(BigUint::from(170u32), &prime).unwrap();
-        let y1 = FieldElement::new(BigUint::from(142u32), &prime).unwrap();
+        let x1 = FieldElement::new(BigUint::from(170u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(142u32), prime.clone()).unwrap();
         let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
 
         // P2 = (60, 139)
-        let x2 = FieldElement::new(BigUint::from(60u32), &prime).unwrap();
-        let y2 = FieldElement::new(BigUint::from(139u32), &prime).unwrap();
+        let x2 = FieldElement::new(BigUint::from(60u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(139u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
 
         // Expected result P3 = (220, 181)
-        let x3 = FieldElement::new(BigUint::from(220u32), &prime).unwrap();
-        let y3 = FieldElement::new(BigUint::from(181u32), &prime).unwrap();
+        let x3 = FieldElement::new(BigUint::from(220u32), prime.clone()).unwrap();
+        let y3 = FieldElement::new(BigUint::from(181u32), prime.clone()).unwrap();
         let p3 = Point::new(x3, y3, a, b).unwrap();
 
         assert_eq!(p1 + p2, p3);
@@ -275,18 +277,18 @@ mod elliptic_curve_tests {
     #[test]
     fn test_add_point_doubling() {
         // Test P + P = 2P
-        let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let prime = Arc::new(BigUint::from(223u32));
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
         // P1 = (192, 105)
-        let x1 = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y1 = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p1 = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
 
         // Expected result 2*P1 = (49, 71)
-        let x2 = FieldElement::new(BigUint::from(49u32), &prime).unwrap();
-        let y2 = FieldElement::new(BigUint::from(71u32), &prime).unwrap();
+        let x2 = FieldElement::new(BigUint::from(49u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(71u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a, b).unwrap();
 
         assert_eq!(p1.clone() + p1, p2);
@@ -294,13 +296,13 @@ mod elliptic_curve_tests {
 
     #[test]
     fn test_scalar_multiplication() {
-        let prime = BigUint::from(223u32);
-        let a = FieldElement::new(BigUint::from(0u32), &prime).unwrap();
-        let b = FieldElement::new(BigUint::from(7u32), &prime).unwrap();
+        let prime = Arc::new(BigUint::from(223u32));
+        let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
+        let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
         // P = (192, 105)
-        let x1 = FieldElement::new(BigUint::from(192u32), &prime).unwrap();
-        let y1 = FieldElement::new(BigUint::from(105u32), &prime).unwrap();
+        let x1 = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
+        let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
 
         let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
@@ -315,8 +317,8 @@ mod elliptic_curve_tests {
 
         // Test case 3: 2 * P = P + P
         // Expected result 2*P = (49, 71) from `test_add_point_doubling`
-        let x2 = FieldElement::new(BigUint::from(49u32), &prime).unwrap();
-        let y2 = FieldElement::new(BigUint::from(71u32), &prime).unwrap();
+        let x2 = FieldElement::new(BigUint::from(49u32), prime.clone()).unwrap();
+        let y2 = FieldElement::new(BigUint::from(71u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
 
         let res3 = &p * BigUint::from(2u32);

@@ -55,7 +55,7 @@ impl Point {
         })
     }
 
-    pub fn new_at_infinity(
+    pub fn infinity(
         a: FieldElement,
         b: FieldElement,
     ) -> Result<Point, PointError> {
@@ -83,14 +83,14 @@ impl Add for &Point {
                 // Self is the inverse of other, so the result is infinity
                 // This check also prevents division by zero in the chord method
                 if x1 == x2 && (y1 + y2).is_zero() {
-                    return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+                    return Point::infinity(self.a.clone(), self.b.clone()).unwrap();
                 }
 
                 // Case 3: self == other (point doubling)
                 if self == rhs {
                     // The tangent line is vertical
                     if y1.is_zero() {
-                        return Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+                        return Point::infinity(self.a.clone(), self.b.clone()).unwrap();
                     }
 
                     // The tangent line intersects the curve at point -2P
@@ -141,7 +141,7 @@ impl Mul<BigUint> for &Point {
 
     fn mul(self, rhs: BigUint) -> Self::Output {
         let mut scalar = rhs;
-        let mut result = Point::new_at_infinity(self.a.clone(), self.b.clone()).unwrap();
+        let mut result = Point::infinity(self.a.clone(), self.b.clone()).unwrap();
         let mut current = self.clone();
 
         while scalar > BigUint::from(0u32) {
@@ -200,7 +200,7 @@ mod elliptic_curve_tests {
         let a = FieldElement::new(BigUint::from(0u32), prime.clone()).unwrap();
         let b = FieldElement::new(BigUint::from(7u32), prime.clone()).unwrap();
 
-        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
+        let p_inf = Point::infinity(a.clone(), b.clone()).unwrap();
         assert!(p_inf.is_at_infinity());
 
         let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
@@ -218,7 +218,7 @@ mod elliptic_curve_tests {
         let x = FieldElement::new(BigUint::from(192u32), prime.clone()).unwrap();
         let y = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p1 = Point::new(x, y, a.clone(), b.clone()).unwrap();
-        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
+        let p_inf = Point::infinity(a.clone(), b.clone()).unwrap();
 
         // p + infinity = p
         let res1 = p1.clone() + p_inf.clone();
@@ -245,7 +245,7 @@ mod elliptic_curve_tests {
         let y2 = FieldElement::new(BigUint::from(118u32), prime.clone()).unwrap();
         let p2 = Point::new(x2, y2, a.clone(), b.clone()).unwrap();
 
-        let p_inf = Point::new_at_infinity(a, b).unwrap();
+        let p_inf = Point::infinity(a, b).unwrap();
         assert_eq!(p1 + p2, p_inf);
     }
 
@@ -305,7 +305,7 @@ mod elliptic_curve_tests {
         let y1 = FieldElement::new(BigUint::from(105u32), prime.clone()).unwrap();
         let p = Point::new(x1, y1, a.clone(), b.clone()).unwrap();
 
-        let p_inf = Point::new_at_infinity(a.clone(), b.clone()).unwrap();
+        let p_inf = Point::infinity(a.clone(), b.clone()).unwrap();
 
         // Test case 1: 0 * P = Infinity
         let res1 = &p * BigUint::from(0u32);

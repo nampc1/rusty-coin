@@ -1,4 +1,7 @@
-use std::{ops::{Add, Div, Mul, Sub}, sync::Arc};
+use std::{
+    ops::{Add, Div, Mul, Sub},
+    sync::Arc,
+};
 
 use num_bigint::BigUint;
 
@@ -52,7 +55,10 @@ impl FieldElement {
             return Err(FieldElementError::InvalidPrime(prime_arc));
         }
 
-        Ok(FieldElement { num, prime: prime_arc })
+        Ok(FieldElement {
+            num,
+            prime: prime_arc,
+        })
     }
 
     pub fn num(&self) -> &BigUint {
@@ -155,7 +161,7 @@ impl Sub for &FieldElement {
 
         FieldElement {
             num,
-            prime: self.prime.clone()
+            prime: self.prime.clone(),
         }
     }
 }
@@ -233,7 +239,7 @@ impl Mul<u32> for &FieldElement {
 
         FieldElement {
             num,
-            prime: self.prime.clone()
+            prime: self.prime.clone(),
         }
     }
 }

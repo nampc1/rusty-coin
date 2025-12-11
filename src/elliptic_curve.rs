@@ -55,10 +55,7 @@ impl Point {
         })
     }
 
-    pub fn infinity(
-        a: FieldElement,
-        b: FieldElement,
-    ) -> Result<Point, PointError> {
+    pub fn infinity(a: FieldElement, b: FieldElement) -> Result<Point, PointError> {
         Ok(Point {
             kind: PointKind::Infinity,
             a,
@@ -69,12 +66,27 @@ impl Point {
     pub fn is_at_infinity(&self) -> bool {
         matches!(self.kind, PointKind::Infinity)
     }
+
+    pub fn x(&self) -> Option<&FieldElement> {
+        match &self.kind {
+            PointKind::Coordinates(x, _) => Some(x),
+            PointKind::Infinity => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn y(&self) -> Option<&FieldElement> {
+        match &self.kind {
+            PointKind::Coordinates(_, y) => Some(y),
+            PointKind::Infinity => None,
+        }
+    }
 }
 
 impl Add for &Point {
     type Output = Point;
 
-    fn add(self, rhs: &Point) -> Self::Output {        
+    fn add(self, rhs: &Point) -> Self::Output {
         match (&self.kind, &rhs.kind) {
             (PointKind::Infinity, _) => rhs.clone(),
             (_, PointKind::Infinity) => self.clone(),

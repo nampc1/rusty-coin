@@ -148,6 +148,27 @@ impl Add<FieldElement> for &FieldElement {
     }
 }
 
+impl Add<&BigUint> for &FieldElement {
+    type Output = FieldElement;
+
+    fn add(self, rhs: &BigUint) -> Self::Output {
+        let num = (&self.num + rhs) % &*self.prime;
+
+        FieldElement {
+            num,
+            prime: self.prime.clone(),
+        }
+    }
+}
+
+impl Add<BigUint> for &FieldElement {
+    type Output = FieldElement;
+
+    fn add(self, rhs: BigUint) -> Self::Output {
+        self + &rhs
+    }
+}
+
 impl Sub for &FieldElement {
     type Output = FieldElement;
 
@@ -231,10 +252,10 @@ impl Mul<&FieldElement> for FieldElement {
     }
 }
 
-impl Mul<u32> for &FieldElement {
+impl Mul<&BigUint> for &FieldElement {
     type Output = FieldElement;
 
-    fn mul(self, rhs: u32) -> Self::Output {
+    fn mul(self, rhs: &BigUint) -> Self::Output {
         let num = (&self.num * rhs) % &*self.prime;
 
         FieldElement {
@@ -244,11 +265,27 @@ impl Mul<u32> for &FieldElement {
     }
 }
 
-impl Mul<u32> for FieldElement {
+impl Mul<&BigUint> for FieldElement {
     type Output = Self;
 
-    fn mul(self, rhs: u32) -> Self::Output {
+    fn mul(self, rhs: &BigUint) -> Self::Output {
         &self * rhs
+    }
+}
+
+impl Mul<BigUint> for &FieldElement {
+    type Output = FieldElement;
+
+    fn mul(self, rhs: BigUint) -> Self::Output {
+        self * &rhs
+    }
+}
+
+impl Mul<BigUint> for FieldElement {
+    type Output = Self;
+
+    fn mul(self, rhs: BigUint) -> Self::Output {
+        self * &rhs
     }
 }
 

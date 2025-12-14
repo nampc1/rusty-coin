@@ -2,6 +2,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::sync::{Arc, LazyLock};
 
 use num_bigint::BigUint;
+use rand::Rng;
 
 use crate::elliptic_curve::{Point, PointError};
 use crate::finite_field::{FieldElement, FieldElementError};
@@ -31,6 +32,8 @@ static N: LazyLock<BigUint> = LazyLock::new(|| {
     )
     .unwrap()
 });
+
+static N_MINUS_2: LazyLock<BigUint> = LazyLock::new(|| &*N - BigUint::from(2u32));
 
 // The x and y coordinates of the secp256k1 generator point G.
 static GX: LazyLock<BigUint> = LazyLock::new(|| {
@@ -113,6 +116,46 @@ impl Add<S256FieldElement> for &S256FieldElement {
     }
 }
 
+impl Add<&BigUint> for &S256FieldElement {
+    type Output = S256FieldElement;
+
+    fn add(self, rhs: &BigUint) -> Self::Output {
+        S256FieldElement {
+            element: &self.element + rhs
+        }
+    }
+}
+
+impl Add<BigUint> for &S256FieldElement {
+    type Output = S256FieldElement;
+
+    fn add(self, rhs: BigUint) -> Self::Output {
+        S256FieldElement {
+            element: &self.element + &rhs
+        }
+    }
+}
+
+impl Add<BigUint> for S256FieldElement {
+    type Output = Self;
+
+    fn add(self, rhs: BigUint) -> Self::Output {
+        S256FieldElement {
+            element: &self.element + &rhs
+        }
+    }
+}
+
+impl Add<&BigUint> for S256FieldElement {
+    type Output = Self;
+
+    fn add(self, rhs: &BigUint) -> Self::Output {
+        S256FieldElement {
+            element: &self.element + rhs
+        }
+    }
+}
+
 impl Sub for &S256FieldElement {
     type Output = S256FieldElement;
 
@@ -181,20 +224,36 @@ impl Mul<S256FieldElement> for &S256FieldElement {
     }
 }
 
-impl Mul<u32> for &S256FieldElement {
+impl Mul<&BigUint> for &S256FieldElement {
     type Output = S256FieldElement;
 
-    fn mul(self, rhs: u32) -> Self::Output {
+    fn mul(self, rhs: &BigUint) -> Self::Output {
         S256FieldElement {
-            element: &self.element * rhs,
+            element: &self.element * rhs
         }
     }
 }
 
-impl Mul<u32> for S256FieldElement {
-    type Output = Self;
+impl Mul<BigUint> for &S256FieldElement {
+    type Output = S256FieldElement;
 
-    fn mul(self, rhs: u32) -> Self::Output {
+    fn mul(self, rhs: BigUint) -> Self::Output {
+        self * &rhs
+    }
+}
+
+impl Mul<BigUint> for S256FieldElement {
+    type Output = S256FieldElement;
+
+    fn mul(self, rhs: BigUint) -> Self::Output {
+        &self * &rhs
+    }
+}
+
+impl Mul<&BigUint> for S256FieldElement {
+    type Output = S256FieldElement;
+
+    fn mul(self, rhs: &BigUint) -> Self::Output {
         &self * rhs
     }
 }
@@ -259,19 +318,22 @@ impl S256Point {
         &self.point
     }
 
-    pub fn x(&self) -> Option<&FieldElement> {
-        self.point.x()
+    pub fn x_num(&self) -> Option<&BigUint> {
+        self.point.x().map(|element| element.num())
     }
 
     pub fn verify(&self, z: &BigUint, sig: &Signature) -> bool {
-        let n_minus_2 = &*N - BigUint::from(2u32);
-        let s_inv = sig.s.modpow(&n_minus_2, &N);
+        if sig.r < 1u32.into() || sig.r >= *N || sig.s < 1u32.into() || sig.s >= *N {
+            return false;
+        }
+
+        let s_inv = sig.s.modpow(&N_MINUS_2, &N);
         let u = (z * &s_inv) % &*N;
         let v = (&sig.r * s_inv) % &*N;
         // u.G + v.P = k.G
         let total_point = &*G * u + self * v;
 
-        total_point.x().is_some_and(|x| x.num() == &sig.r)
+        total_point.x_num().is_some_and(|x| (x % &*N) == sig.r)
     }
 }
 
@@ -331,10 +393,50 @@ impl Mul<BigUint> for S256Point {
     }
 }
 
+impl Mul<&BigUint> for &S256Point {
+    type Output = S256Point;
+
+    fn mul(self, rhs: &BigUint) -> Self::Output {
+        S256Point {
+            point: &self.point * rhs,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Signature {
     pub r: BigUint,
     pub s: BigUint,
+}
+
+pub struct PrivateKey {
+    secret: BigUint,
+    point: S256Point,
+}
+
+impl PrivateKey {
+    pub fn sign(&self, z: &BigUint) -> Signature {
+        let k = Self::generate_k();
+        let point = &*G * &k;
+        let r = point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
+        let k_inv = k.modpow(&N_MINUS_2, &N);
+        let s = ((&r * &self.secret + z) * k_inv) % &*N;
+
+        Signature { s, r }
+    }
+
+    fn generate_k() -> BigUint {
+        loop {
+            let mut arr = [0u8; 32];
+            rand::rng().fill(&mut arr[..]);
+
+            let k = BigUint::from_bytes_be(&arr);
+
+            if k < *N && k >= BigUint::from(1u32) {
+                return k;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -106,8 +106,8 @@ impl Add for &Point {
                     }
 
                     // The tangent line intersects the curve at point -2P
-                    let slope = (x1.pow(2u32) * 3u32 + &self.a) / (y1 * 2u32);
-                    let x = slope.pow(2u32) - x1 * 2u32;
+                    let slope = (x1.pow(2u32) * BigUint::from(3u32) + &self.a) / (y1 * BigUint::from(2u32));
+                    let x = slope.pow(2u32) - x1 * BigUint::from(2u32);
                     let y = &slope * (x1 - &x) - y1;
 
                     return Point::new(x, y, self.a.clone(), self.b.clone()).unwrap();
@@ -172,6 +172,14 @@ impl Mul<BigUint> for &Point {
         }
 
         result
+    }
+}
+
+impl Mul<&BigUint> for &Point {
+    type Output = Point;
+
+    fn mul(self, rhs: &BigUint) -> Self::Output {
+        self * rhs.clone()
     }
 }
 

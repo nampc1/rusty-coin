@@ -81,7 +81,10 @@ impl FieldElement {
         }
 
         if self.is_zero() {
-            return FieldElement { num: BigUint::from(0u32), prime: self.prime.clone() };
+            return FieldElement {
+                num: BigUint::from(0u32),
+                prime: self.prime.clone(),
+            };
         }
 
         let modified_exponent = biguint_exponent % (&*self.prime - BigUint::from(1u32));
@@ -525,7 +528,10 @@ mod finite_field_tests {
         // Subtraction (fe1 - fe2) -> 20 - 15 = 5
         let fe_sub = &fe1 - &fe2;
         let b_sub = (&b1 + &prime - &b2) % &prime;
-        assert_eq!(fe_sub.num, b_sub, "Subtraction result mismatch with BigUint");
+        assert_eq!(
+            fe_sub.num, b_sub,
+            "Subtraction result mismatch with BigUint"
+        );
 
         // Subtraction wrapping (fe2 - fe1) -> 15 - 20 = -5 = 26 (mod 31)
         let fe_sub_wrap = &fe2 - &fe1;
@@ -538,7 +544,10 @@ mod finite_field_tests {
         // Multiplication
         let fe_mul = &fe1 * &fe2;
         let b_mul = (&b1 * &b2) % &prime;
-        assert_eq!(fe_mul.num, b_mul, "Multiplication result mismatch with BigUint");
+        assert_eq!(
+            fe_mul.num, b_mul,
+            "Multiplication result mismatch with BigUint"
+        );
 
         // Division
         let fe_div = &fe1 / &fe2;

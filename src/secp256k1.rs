@@ -59,6 +59,62 @@ pub static G: LazyLock<S256Point> = LazyLock::new(|| {
     S256Point::new(x, y).unwrap()
 });
 
+macro_rules! impl_s256_wrappers {
+    ($type:ident, $trait:ident, $method:ident) => {
+        impl $trait<$type> for $type {
+            type Output = $type;
+
+            fn $method(self, rhs: $type) -> $type {
+                (&self).$method(&rhs)
+            }
+        }
+
+        impl $trait<&$type> for $type {
+            type Output = $type;
+
+            fn $method(self, rhs: &$type) -> $type {
+                (&self).$method(rhs)
+            }
+        }
+
+        impl $trait<$type> for &$type {
+            type Output = $type;
+
+            fn $method(self, rhs: $type) -> $type {
+                self.$method(&rhs)
+            }
+        }
+    };
+}
+
+macro_rules! impl_s256_biguint_wrappers {
+    ($type:ident, $trait:ident, $method:ident) => {
+        impl $trait<BigUint> for &$type {
+            type Output = $type;
+
+            fn $method(self, rhs: BigUint) -> Self::Output {
+                self.$method(&rhs)
+            }
+        }
+
+        impl $trait<BigUint> for $type {
+            type Output = $type;
+
+            fn $method(self, rhs: BigUint) -> Self::Output {
+                (&self).$method(&rhs)
+            }
+        }
+
+        impl $trait<&BigUint> for $type {
+            type Output = $type;
+
+            fn $method(self, rhs: &BigUint) -> Self::Output {
+                (&self).$method(rhs)
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct S256FieldElement {
     element: FieldElement,
@@ -92,69 +148,19 @@ impl Add for &S256FieldElement {
     }
 }
 
-impl Add for S256FieldElement {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        &self + &rhs
-    }
-}
-
-impl Add<&S256FieldElement> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn add(self, rhs: &S256FieldElement) -> Self::Output {
-        &self + rhs
-    }
-}
-
-impl Add<S256FieldElement> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn add(self, rhs: S256FieldElement) -> Self::Output {
-        self + &rhs
-    }
-}
+impl_s256_wrappers!(S256FieldElement, Add, add);
 
 impl Add<&BigUint> for &S256FieldElement {
     type Output = S256FieldElement;
 
     fn add(self, rhs: &BigUint) -> Self::Output {
         S256FieldElement {
-            element: &self.element + rhs
+            element: &self.element + rhs,
         }
     }
 }
 
-impl Add<BigUint> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn add(self, rhs: BigUint) -> Self::Output {
-        S256FieldElement {
-            element: &self.element + &rhs
-        }
-    }
-}
-
-impl Add<BigUint> for S256FieldElement {
-    type Output = Self;
-
-    fn add(self, rhs: BigUint) -> Self::Output {
-        S256FieldElement {
-            element: &self.element + &rhs
-        }
-    }
-}
-
-impl Add<&BigUint> for S256FieldElement {
-    type Output = Self;
-
-    fn add(self, rhs: &BigUint) -> Self::Output {
-        S256FieldElement {
-            element: &self.element + rhs
-        }
-    }
-}
+impl_s256_biguint_wrappers!(S256FieldElement, Add, add);
 
 impl Sub for &S256FieldElement {
     type Output = S256FieldElement;
@@ -166,29 +172,7 @@ impl Sub for &S256FieldElement {
     }
 }
 
-impl Sub for S256FieldElement {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        &self - &rhs
-    }
-}
-
-impl Sub<&S256FieldElement> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn sub(self, rhs: &S256FieldElement) -> Self::Output {
-        &self - rhs
-    }
-}
-
-impl Sub<S256FieldElement> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn sub(self, rhs: S256FieldElement) -> Self::Output {
-        self - &rhs
-    }
-}
+impl_s256_wrappers!(S256FieldElement, Sub, sub);
 
 impl Mul for &S256FieldElement {
     type Output = S256FieldElement;
@@ -200,63 +184,19 @@ impl Mul for &S256FieldElement {
     }
 }
 
-impl Mul for S256FieldElement {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        &self * &rhs
-    }
-}
-
-impl Mul<&S256FieldElement> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn mul(self, rhs: &S256FieldElement) -> Self::Output {
-        &self * rhs
-    }
-}
-
-impl Mul<S256FieldElement> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn mul(self, rhs: S256FieldElement) -> Self::Output {
-        self * &rhs
-    }
-}
+impl_s256_wrappers!(S256FieldElement, Mul, mul);
 
 impl Mul<&BigUint> for &S256FieldElement {
     type Output = S256FieldElement;
 
     fn mul(self, rhs: &BigUint) -> Self::Output {
         S256FieldElement {
-            element: &self.element * rhs
+            element: &self.element * rhs,
         }
     }
 }
 
-impl Mul<BigUint> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn mul(self, rhs: BigUint) -> Self::Output {
-        self * &rhs
-    }
-}
-
-impl Mul<BigUint> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn mul(self, rhs: BigUint) -> Self::Output {
-        &self * &rhs
-    }
-}
-
-impl Mul<&BigUint> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn mul(self, rhs: &BigUint) -> Self::Output {
-        &self * rhs
-    }
-}
+impl_s256_biguint_wrappers!(S256FieldElement, Mul, mul);
 
 impl Div for &S256FieldElement {
     type Output = S256FieldElement;
@@ -268,29 +208,7 @@ impl Div for &S256FieldElement {
     }
 }
 
-impl Div for S256FieldElement {
-    type Output = Self;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        &self / &rhs
-    }
-}
-
-impl Div<&S256FieldElement> for S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn div(self, rhs: &S256FieldElement) -> Self::Output {
-        &self / rhs
-    }
-}
-
-impl Div<S256FieldElement> for &S256FieldElement {
-    type Output = S256FieldElement;
-
-    fn div(self, rhs: S256FieldElement) -> Self::Output {
-        self / &rhs
-    }
-}
+impl_s256_wrappers!(S256FieldElement, Div, div);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct S256Point {
@@ -347,61 +265,24 @@ impl Add for &S256Point {
     }
 }
 
-impl Add for S256Point {
-    type Output = Self;
+impl_s256_wrappers!(S256Point, Add, add);
 
-    fn add(self, rhs: Self) -> Self::Output {
-        &self + &rhs
-    }
-}
-
-impl Add<&S256Point> for S256Point {
-    type Output = Self;
-
-    fn add(self, rhs: &S256Point) -> Self::Output {
-        &self + rhs
-    }
-}
-
-impl Add<S256Point> for &S256Point {
+impl Mul<&BigUint> for &S256Point {
     type Output = S256Point;
 
-    fn add(self, rhs: S256Point) -> Self::Output {
-        self + &rhs
-    }
-}
-
-impl Mul<BigUint> for &S256Point {
-    type Output = S256Point;
-
-    fn mul(self, rhs: BigUint) -> Self::Output {
+    fn mul(self, rhs: &BigUint) -> Self::Output {
         // The order of the generator point G is N.
         // So, k * G = (k mod n) * G.
         // We can reduce the scalar modulo N before multiplication for efficiency.
         let scalar = rhs % &*N;
+
         S256Point {
             point: &self.point * scalar,
         }
     }
 }
 
-impl Mul<BigUint> for S256Point {
-    type Output = S256Point;
-
-    fn mul(self, rhs: BigUint) -> Self::Output {
-        &self * rhs
-    }
-}
-
-impl Mul<&BigUint> for &S256Point {
-    type Output = S256Point;
-
-    fn mul(self, rhs: &BigUint) -> Self::Output {
-        S256Point {
-            point: &self.point * rhs,
-        }
-    }
-}
+impl_s256_biguint_wrappers!(S256Point, Mul, mul);
 
 #[derive(Debug, Clone)]
 pub struct Signature {

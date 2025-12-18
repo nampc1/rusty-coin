@@ -290,20 +290,51 @@ pub struct Signature {
     pub s: BigUint,
 }
 
+#[derive(Debug, Clone)]
 pub struct PrivateKey {
     secret: BigUint,
     point: S256Point,
 }
 
 impl PrivateKey {
+    pub fn new(secret: BigUint) -> Self {
+        let point = &*G * &secret;
+        PrivateKey { secret, point }
+    }
+
     pub fn sign(&self, z: &BigUint) -> Signature {
         let k = Self::generate_k();
-        let point = &*G * &k;
-        let r = point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
+        let r_point = &*G * &k;
+        let r = r_point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
+
+        // If r is zero, the signature is invalid because it doesn't bind the key.
+        // This is astronomically rare, but we must handle it by generating a new k.
+        if r == BigUint::from(0u32) {
+            return self.sign(z);
+        }
+
         let k_inv = k.modpow(&N_MINUS_2, &N);
-        let s = ((&r * &self.secret + z) * k_inv) % &*N;
+        // s = (z + r * secret) / k
+        let mut s = ((&r * &self.secret + z) * k_inv) % &*N;
+
+        // If s is zero, the signature is invalid (cannot compute inverse for verification).
+        // We must generate a new k and retry.
+        if s == BigUint::from(0u32) {
+            return self.sign(z);
+        }
+
+        // BIP 62: Low S values.
+        // ECDSA signatures are malleable: if (r, s) is valid, so is (r, N - s).
+        // To prevent transaction malleability, Bitcoin requires s to be in the lower half of the group order.
+        if s > &*N / BigUint::from(2u32) {
+            s = &*N - s;
+        }
 
         Signature { s, r }
+    }
+
+    pub fn point(&self) -> &S256Point {
+        &self.point
     }
 
     fn generate_k() -> BigUint {
@@ -511,5 +542,62 @@ mod s256_point_tests {
         let s2 = BigUint::parse_bytes(s2_hex.as_bytes(), 16).unwrap();
         let sig2 = Signature { r: r2, s: s2 };
         assert!(public_key.verify(&z2, &sig2), "Signature 2 should be valid");
+    }
+}
+
+#[cfg(test)]
+mod private_key_tests {
+    use super::*;
+    use num_bigint::BigUint;
+
+    #[test]
+    fn test_sign() {
+        let secret = BigUint::parse_bytes(
+            b"388c6cf54328636419a5f4792fc595c159f0197183a1c28154a688416d172905",
+            16,
+        )
+        .unwrap();
+        let pk = PrivateKey::new(secret);
+
+        let z = BigUint::parse_bytes(
+            b"bc62d4b80d9e362aa2955239e8508d7ca20c44997091cf1b373688832a87f7d1",
+            16,
+        )
+        .unwrap();
+
+        let sig = pk.sign(&z);
+
+        assert!(pk.point().verify(&z, &sig));
+    }
+
+    #[test]
+    fn test_sign_randomness() {
+        let secret = BigUint::from(12345u32);
+        let pk = PrivateKey::new(secret);
+        let z = BigUint::from(99999u32);
+
+        let sig1 = pk.sign(&z);
+        let sig2 = pk.sign(&z);
+
+        // Signatures should be different because k is random
+        assert_ne!(sig1.r, sig2.r);
+        assert_ne!(sig1.s, sig2.s);
+
+        assert!(pk.point().verify(&z, &sig1));
+        assert!(pk.point().verify(&z, &sig2));
+    }
+
+    #[test]
+    fn test_sign_low_s() {
+        let secret = BigUint::from(12345u32);
+        let pk = PrivateKey::new(secret);
+        let z = BigUint::from(99999u32);
+        let n_div_2 = &*N / BigUint::from(2u32);
+
+        for _ in 0..20 {
+            let sig = pk.sign(&z);
+            assert!(sig.s <= n_div_2, "s value should be <= N/2");
+            assert!(pk.point().verify(&z, &sig));
+        }
     }
 }

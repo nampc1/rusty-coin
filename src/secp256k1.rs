@@ -1,11 +1,14 @@
 use std::ops::{Add, Div, Mul, Sub};
 use std::sync::{Arc, LazyLock};
 
+use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
-use rand::Rng;
+use sha2::Sha256;
 
 use crate::elliptic_curve::{Point, PointError};
 use crate::finite_field::{FieldElement, FieldElementError};
+
+type HmacSha256 = Hmac<Sha256>;
 
 // The prime modulus of the secp256k1 field, P = 2^256 - 2^32 - 977.
 //
@@ -304,7 +307,7 @@ impl PrivateKey {
 
     pub fn sign(&self, z: &BigUint) -> Signature {
         loop {
-            let k = Self::generate_k();
+            let k = self.deterministic_k(z);
             let r_point = &*G * &k;
             let r = r_point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
 
@@ -339,16 +342,67 @@ impl PrivateKey {
         &self.point
     }
 
-    fn generate_k() -> BigUint {
+    fn deterministic_k(&self, z: &BigUint) -> BigUint {
+        let mut k = [0u8; 32];
+        let mut v = [1u8; 32];
+
+        let z_num = match z > &*N {
+            true => z - &*N,
+            false => z.clone(),
+        };
+
+        let to_32_bytes = |num: &BigUint| {
+            let bytes = num.to_bytes_be();
+            let mut result = [0u8; 32];
+            let start = 32usize.saturating_sub(bytes.len());
+            result[start..].copy_from_slice(&bytes);
+
+            result
+        };
+        let z_bytes = to_32_bytes(&z_num);
+        let secret_bytes = to_32_bytes(&self.secret);
+
+        let mut mac = HmacSha256::new_from_slice(&k).unwrap();
+        mac.update(&v);
+        mac.update(&[0x00]);
+        mac.update(&secret_bytes);
+        mac.update(&z_bytes);
+        k = mac.finalize().into_bytes().into();
+
+        mac = HmacSha256::new_from_slice(&k).unwrap();
+        mac.update(&v);
+        v = mac.finalize().into_bytes().into();
+
+        mac = HmacSha256::new_from_slice(&k).unwrap();
+        mac.update(&v);
+        mac.update(&[0x01]);
+        mac.update(&secret_bytes);
+        mac.update(&z_bytes);
+        k = mac.finalize().into_bytes().into();
+
+        mac = HmacSha256::new_from_slice(&k).unwrap();
+        mac.update(&v);
+        v = mac.finalize().into_bytes().into();
+
         loop {
-            let mut arr = [0u8; 32];
-            rand::rng().fill(&mut arr[..]);
+            mac = HmacSha256::new_from_slice(&k).unwrap();
+            mac.update(&v);
+            v = mac.finalize().into_bytes().into();
 
-            let k = BigUint::from_bytes_be(&arr);
+            let candidate = BigUint::from_bytes_be(&v);
 
-            if k < *N && k >= BigUint::from(1u32) {
-                return k;
+            if candidate >= BigUint::from(1u32) && candidate < *N {
+                return candidate;
             }
+
+            mac = HmacSha256::new_from_slice(&k).unwrap();
+            mac.update(&v);
+            mac.update(&[0x00]);
+            k = mac.finalize().into_bytes().into();
+
+            mac = HmacSha256::new_from_slice(&k).unwrap();
+            mac.update(&v);
+            v = mac.finalize().into_bytes().into();
         }
     }
 }
@@ -573,7 +627,7 @@ mod private_key_tests {
     }
 
     #[test]
-    fn test_sign_randomness() {
+    fn test_sign_deterministic() {
         let secret = BigUint::from(12345u32);
         let pk = PrivateKey::new(secret);
         let z = BigUint::from(99999u32);
@@ -581,9 +635,9 @@ mod private_key_tests {
         let sig1 = pk.sign(&z);
         let sig2 = pk.sign(&z);
 
-        // Signatures should be different because k is random
-        assert_ne!(sig1.r, sig2.r);
-        assert_ne!(sig1.s, sig2.s);
+        // Signatures should be identical because k is deterministic (RFC 6979)
+        assert_eq!(sig1.r, sig2.r);
+        assert_eq!(sig1.s, sig2.s);
 
         assert!(pk.point().verify(&z, &sig1));
         assert!(pk.point().verify(&z, &sig2));

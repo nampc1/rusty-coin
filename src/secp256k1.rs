@@ -303,34 +303,36 @@ impl PrivateKey {
     }
 
     pub fn sign(&self, z: &BigUint) -> Signature {
-        let k = Self::generate_k();
-        let r_point = &*G * &k;
-        let r = r_point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
+        loop {
+            let k = Self::generate_k();
+            let r_point = &*G * &k;
+            let r = r_point.x_num().unwrap() % &*N; // k is always in range [1, N) so we can safely unwrap
 
-        // If r is zero, the signature is invalid because it doesn't bind the key.
-        // This is astronomically rare, but we must handle it by generating a new k.
-        if r == BigUint::from(0u32) {
-            return self.sign(z);
+            // If r is zero, the signature is invalid because it doesn't bind the key.
+            // This is astronomically rare, but we must handle it by generating a new k.
+            if r == BigUint::from(0u32) {
+                continue;
+            }
+
+            let k_inv = k.modpow(&N_MINUS_2, &N);
+            // s = (z + r * secret) / k
+            let mut s = ((&r * &self.secret + z) * k_inv) % &*N;
+
+            // If s is zero, the signature is invalid (cannot compute inverse for verification).
+            // We must generate a new k and retry.
+            if s == BigUint::from(0u32) {
+                continue;
+            }
+
+            // BIP 62: Low S values.
+            // ECDSA signatures are malleable: if (r, s) is valid, so is (r, N - s).
+            // To prevent transaction malleability, Bitcoin requires s to be in the lower half of the group order.
+            if s > &*N / BigUint::from(2u32) {
+                s = &*N - s;
+            }
+
+            return Signature { s, r };
         }
-
-        let k_inv = k.modpow(&N_MINUS_2, &N);
-        // s = (z + r * secret) / k
-        let mut s = ((&r * &self.secret + z) * k_inv) % &*N;
-
-        // If s is zero, the signature is invalid (cannot compute inverse for verification).
-        // We must generate a new k and retry.
-        if s == BigUint::from(0u32) {
-            return self.sign(z);
-        }
-
-        // BIP 62: Low S values.
-        // ECDSA signatures are malleable: if (r, s) is valid, so is (r, N - s).
-        // To prevent transaction malleability, Bitcoin requires s to be in the lower half of the group order.
-        if s > &*N / BigUint::from(2u32) {
-            s = &*N - s;
-        }
-
-        Signature { s, r }
     }
 
     pub fn point(&self) -> &S256Point {

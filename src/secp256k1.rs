@@ -243,6 +243,10 @@ impl S256Point {
         self.point.x().map(|element| element.num())
     }
 
+    pub fn y_num(&self) -> Option<&BigUint> {
+        self.point.y().map(|element| element.num())
+    }
+
     pub fn verify(&self, z: &BigUint, sig: &Signature) -> bool {
         if sig.r < 1u32.into() || sig.r >= *N || sig.s < 1u32.into() || sig.s >= *N {
             return false;
@@ -256,6 +260,46 @@ impl S256Point {
 
         total_point.x_num().is_some_and(|x| (x % &*N) == sig.r)
     }
+
+    pub fn sec(&self, compressed: Option<bool>) -> Vec<u8> {
+        if self.is_at_infinity() {
+            return vec![0x00];
+        }
+
+        let x_bytes = to_32_bytes(self.x_num().unwrap());
+
+        if compressed.unwrap_or(true) {
+            let mut serialized = Vec::<u8>::with_capacity(33);
+            
+            // bit(0) checks the LSB (2^0 = 1). If 1 (true), it's ODD. If 0 (false), it's EVEN.
+            let marker = if self.y_num().unwrap().bit(0) {
+                0x03
+            } else {
+                0x02
+            };
+            
+            serialized.push(marker);
+            serialized.extend(x_bytes);
+
+            return serialized;
+        }
+
+        let mut serialized = Vec::<u8>::with_capacity(65);
+        serialized.push(0x04);
+        serialized.extend(x_bytes);
+        serialized.extend(to_32_bytes(self.y_num().unwrap()));
+
+        serialized
+    }
+}
+
+pub fn to_32_bytes(num: &BigUint) -> [u8; 32] {
+    let bytes = num.to_bytes_be();
+    let mut result = [0u8; 32];
+    let start = 32usize.saturating_sub(bytes.len());
+    result[start..].copy_from_slice(&bytes);
+
+    result
 }
 
 impl Add for &S256Point {
@@ -351,14 +395,6 @@ impl PrivateKey {
             false => z.clone(),
         };
 
-        let to_32_bytes = |num: &BigUint| {
-            let bytes = num.to_bytes_be();
-            let mut result = [0u8; 32];
-            let start = 32usize.saturating_sub(bytes.len());
-            result[start..].copy_from_slice(&bytes);
-
-            result
-        };
         let z_bytes = to_32_bytes(&z_num);
         let secret_bytes = to_32_bytes(&self.secret);
 

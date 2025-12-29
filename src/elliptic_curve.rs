@@ -74,7 +74,6 @@ impl Point {
         }
     }
 
-    #[allow(dead_code)]
     pub fn y(&self) -> Option<&FieldElement> {
         match &self.kind {
             PointKind::Coordinates(_, y) => Some(y),

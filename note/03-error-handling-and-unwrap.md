@@ -74,6 +74,39 @@ When encountering a `Result` or `Option`, we follow this decision process:
 
 **Rationale:** This disciplined approach to error handling is crucial for building reliable software. It makes a clear distinction between expected, recoverable failures (like invalid user input) and unexpected programming errors (bugs). Using `.expect()` for bugs and `Result` propagation for recoverable errors makes the code safer, more robust, and easier to debug.
 
+## Error Mapping
+
+When writing libraries or complex systems, low-level errors (like an `InvalidNum` in a finite field math library) often need to be translated into higher-level, domain-specific errors (like `InvalidFormat` or `NotOnCurve` in an elliptic curve library) before being exposed to the user. This is called **Error Mapping**.
+
+**Why Map Errors?**
+1.  **Abstraction:** It hides implementation details. A user parsing a public key shouldn't need to know about internal finite field arithmetic errors.
+2.  **API Stability:** If you change your internal math library, your public error API (`PointError`) remains the same.
+3.  **Clarity:** It translates "what went wrong technically" into "what went wrong semantically" for the user.
+
+**How to Map Errors:**
+
+1.  **`map_err`**: The most explicit way to transform one error type into another.
+    ```rust
+    // Convert a low-level `FieldElementError` into a high-level `PointError`
+    let x = S256FieldElement::new(num)
+        .map_err(|_| PointError::InvalidFormat)?;
+    ```
+
+2.  **`From` Trait**: Implement `From<LowLevelError> for HighLevelError` to allow automatic conversion with `?`.
+    ```rust
+    // If you impl From<FieldElementError> for PointError...
+    let x = S256FieldElement::new(num)?; // ...the `?` does the conversion automatically.
+    ```
+
+## Summary: When to Use What
+
+| Approach | Best For | Why? |
+| :--- | :--- | :--- |
+| **`Result<T, E>` + Mapping** | **Library / Core Logic** | Provides a clean, stable, and semantic API (`PointError`) while handling internal failures safely. |
+| **`Option<T>`** | **Lookups / Checks** | When "not found" or "invalid" is the only failure mode and the reason is obvious (e.g., `HashMap::get`, `hex::decode`). |
+| **`anyhow` / `Box<dyn Error>`** | **Application / Scripts** | When you just need to propagate errors to `main()` and print them. Fast to write, but harder for callers to handle specific cases. |
+| **`unwrap()` / `expect()`** | **Invariants / Bugs** | When failure is **mathematically impossible** if the code is correct. Use `.expect()` to document *why* it's impossible. |
+
 ## Advanced Tools and Libraries
 
 While the standard library provides all the necessary tools for error handling, several popular crates can reduce boilerplate and improve ergonomics, especially in larger applications.

@@ -124,8 +124,8 @@ pub struct S256FieldElement {
 }
 
 impl S256FieldElement {
-    pub fn new(num: BigUint) -> Result<Self, FieldElementError> {
-        let element = FieldElement::new(num, S256_PRIME.clone())?;
+    pub fn new<E: Into<BigUint>>(num: E) -> Result<Self, FieldElementError> {
+        let element = FieldElement::new(num.into(), S256_PRIME.clone())?;
 
         Ok(S256FieldElement { element })
     }
@@ -138,6 +138,11 @@ impl S256FieldElement {
 
     pub fn num(&self) -> &BigUint {
         self.element.num()
+    }
+    
+    pub fn sqrt(&self) -> S256FieldElement {
+        let pow_magnitude = (&**S256_PRIME + 1u32) / 4u32;
+        S256FieldElement { element: self.element.pow(pow_magnitude) }
     }
 }
 
@@ -290,6 +295,29 @@ impl S256Point {
         serialized.extend(to_32_bytes(self.y_num().unwrap()));
 
         serialized
+    }
+    
+    pub fn parse(sec_bin: &[u8]) -> Result<S256Point, PointError> {
+        if sec_bin[0] == 0x04 {
+            let x_bigint = BigUint::from_bytes_be(&sec_bin[1..33]);
+            let y_bigint = BigUint::from_bytes_be(&sec_bin[33..65]);
+
+            // todo: use map_err() and ?
+            return S256Point::new(S256FieldElement::new(x_bigint).unwrap(), S256FieldElement::new(y_bigint).unwrap());
+        }
+        
+        let is_odd = sec_bin[0] == 0x03;
+        let x = S256FieldElement::new(BigUint::from_bytes_be(&sec_bin[1..])).unwrap();
+        let y_squared = x.pow(BigUint::from(3u32)) + S256FieldElement::new(7u32).unwrap();
+        let y = y_squared.sqrt();
+        
+        if y.num().bit(0) == is_odd {
+            S256Point::new(x, y)
+        } else {
+            let other_y = S256FieldElement::new(0u32).unwrap() - y;
+            
+            S256Point::new(x, other_y)
+        }
     }
 }
 

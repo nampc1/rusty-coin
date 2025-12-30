@@ -6,14 +6,14 @@ use std::ops::{Add, Mul};
 #[derive(Debug)]
 pub enum PointError {
     NotOnCurve,
-    CannotParse
+    CannotParse,
 }
 
 impl std::fmt::Display for PointError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PointError::NotOnCurve => write!(f, "Point is not on the elliptic curve"),
-            PointError::CannotParse => write!(f, "Cannot parse point from input data")
+            PointError::CannotParse => write!(f, "Cannot parse point from input data"),
         }
     }
 }

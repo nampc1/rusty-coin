@@ -321,14 +321,15 @@ impl S256Point {
         let is_odd = match sec_bin[0] {
             0x03 => true,
             0x02 => false,
-            _ => return Err(PointError::CannotParse)
+            _ => return Err(PointError::CannotParse),
         };
-        
+
         if sec_bin.len() != 33 {
             return Err(PointError::CannotParse);
         }
 
-        let x = S256FieldElement::new(BigUint::from_bytes_be(&sec_bin[1..])).map_err(|_| PointError::CannotParse)?;
+        let x = S256FieldElement::new(BigUint::from_bytes_be(&sec_bin[1..]))
+            .map_err(|_| PointError::CannotParse)?;
         let y_squared = x.pow(BigUint::from(3u32)) + S256FieldElement::new(7u32).unwrap();
         let y = y_squared.sqrt();
 
@@ -384,6 +385,34 @@ impl_s256_biguint_wrappers!(S256Point, Mul, mul);
 pub struct Signature {
     pub r: BigUint,
     pub s: BigUint,
+}
+
+impl Signature {
+    pub fn der(&self) -> Vec<u8> {
+        let mut result = vec![0x30];
+        let mut r_bytes = self.r.to_bytes_be();
+        let mut s_bytes = self.s.to_bytes_be();
+
+        if r_bytes.is_empty() || r_bytes.first().is_some_and(|&first| first >= 0x80) {
+            r_bytes.insert(0, 0x00);
+        }
+
+        if s_bytes.is_empty() || s_bytes.first().is_some_and(|&first| first >= 0x80) {
+            s_bytes.insert(0, 0x00);
+        }
+        
+        let total_len = 1 + 1 + r_bytes.len() + 1 + 1 + s_bytes.len();
+        
+        result.push(total_len as u8);
+        result.push(0x02);
+        result.push(r_bytes.len() as u8);
+        result.extend_from_slice(&r_bytes);
+        result.push(0x02);
+        result.push(s_bytes.len() as u8);
+        result.extend_from_slice(&s_bytes);
+
+        result
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -803,5 +832,80 @@ mod private_key_tests {
             assert!(sig.s <= n_div_2, "s value should be <= N/2");
             assert!(pk.point().verify(&z, &sig));
         }
+    }
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::*;
+    use num_bigint::BigUint;
+
+    fn hex_to_bytes(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn test_der_serialization_example() {
+        let r_hex = "37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6";
+        let s_hex = "8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        
+        let r = BigUint::parse_bytes(r_hex.as_bytes(), 16).unwrap();
+        let s = BigUint::parse_bytes(s_hex.as_bytes(), 16).unwrap();
+        
+        let sig = Signature { r, s };
+        let der = sig.der();
+
+        let expected_hex = "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        let expected_bytes = hex_to_bytes(expected_hex);
+
+        assert_eq!(der, expected_bytes);
+    }
+
+    #[test]
+    fn test_der_serialization_padding() {
+        // Case 1: Both need padding (>= 0x80)
+        let r = BigUint::from(0x80u32); // 128
+        let s = BigUint::from(0x81u32); // 129
+        let sig = Signature { r, s };
+        let der = sig.der();
+        
+        // 0x30 [len] 0x02 [len_r] [00 80] 0x02 [len_s] [00 81]
+        // len_r = 2 (00 80)
+        // len_s = 2 (00 81)
+        // total = 2 + 2 + 2 + 2 = 8
+        // 30 08 02 02 00 80 02 02 00 81
+        assert_eq!(der, hex_to_bytes("30080202008002020081"));
+        
+        // Case 2: Neither needs padding (< 0x80)
+        let r = BigUint::from(0x7Fu32); // 127
+        let s = BigUint::from(0x01u32); // 1
+        let sig = Signature { r, s };
+        let der = sig.der();
+        
+        // 0x30 [len] 0x02 [len_r] [7F] 0x02 [len_s] [01]
+        // len_r = 1 (7F)
+        // len_s = 1 (01)
+        // total = 2 + 1 + 2 + 1 = 6
+        // 30 06 02 01 7F 02 01 01
+        assert_eq!(der, hex_to_bytes("300602017F020101"));
+    }
+    
+    #[test]
+    fn test_der_serialization_zero() {
+        // Robustness check for r=0, s=0
+        let r = BigUint::from(0u32);
+        let s = BigUint::from(0u32);
+        let sig = Signature { r, s };
+        let der = sig.der();
+        
+        // 0x30 [len] 0x02 [len_r] [00] 0x02 [len_s] [00]
+        // len_r = 1 (00)
+        // len_s = 1 (00)
+        // total = 2 + 1 + 2 + 1 = 6
+        // 30 06 02 01 00 02 01 00
+        assert_eq!(der, hex_to_bytes("3006020100020100"));
     }
 }

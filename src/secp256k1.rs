@@ -139,10 +139,12 @@ impl S256FieldElement {
     pub fn num(&self) -> &BigUint {
         self.element.num()
     }
-    
+
     pub fn sqrt(&self) -> S256FieldElement {
         let pow_magnitude = (&**S256_PRIME + 1u32) / 4u32;
-        S256FieldElement { element: self.element.pow(pow_magnitude) }
+        S256FieldElement {
+            element: self.element.pow(pow_magnitude),
+        }
     }
 }
 
@@ -275,14 +277,14 @@ impl S256Point {
 
         if compressed.unwrap_or(true) {
             let mut serialized = Vec::<u8>::with_capacity(33);
-            
+
             // bit(0) checks the LSB (2^0 = 1). If 1 (true), it's ODD. If 0 (false), it's EVEN.
             let marker = if self.y_num().unwrap().bit(0) {
                 0x03
             } else {
                 0x02
             };
-            
+
             serialized.push(marker);
             serialized.extend(x_bytes);
 
@@ -296,26 +298,45 @@ impl S256Point {
 
         serialized
     }
-    
-    pub fn parse(sec_bin: &[u8]) -> Result<S256Point, PointError> {
-        if sec_bin[0] == 0x04 {
-            let x_bigint = BigUint::from_bytes_be(&sec_bin[1..33]);
-            let y_bigint = BigUint::from_bytes_be(&sec_bin[33..65]);
 
-            // todo: use map_err() and ?
-            return S256Point::new(S256FieldElement::new(x_bigint).unwrap(), S256FieldElement::new(y_bigint).unwrap());
+    pub fn parse(sec_bin: &[u8]) -> Result<S256Point, PointError> {
+        if sec_bin.is_empty() {
+            return Err(PointError::CannotParse);
         }
+
+        if sec_bin[0] == 0x04 {
+            if sec_bin.len() != 65 {
+                return Err(PointError::CannotParse);
+            }
+
+            let x_bigint = BigUint::from_bytes_be(&sec_bin[1..33]);
+            let y_bigint = BigUint::from_bytes_be(&sec_bin[33..]);
+
+            return S256Point::new(
+                S256FieldElement::new(x_bigint).map_err(|_| PointError::CannotParse)?,
+                S256FieldElement::new(y_bigint).map_err(|_| PointError::CannotParse)?,
+            );
+        }
+
+        let is_odd = match sec_bin[0] {
+            0x03 => true,
+            0x02 => false,
+            _ => return Err(PointError::CannotParse)
+        };
         
-        let is_odd = sec_bin[0] == 0x03;
-        let x = S256FieldElement::new(BigUint::from_bytes_be(&sec_bin[1..])).unwrap();
+        if sec_bin.len() != 33 {
+            return Err(PointError::CannotParse);
+        }
+
+        let x = S256FieldElement::new(BigUint::from_bytes_be(&sec_bin[1..])).map_err(|_| PointError::CannotParse)?;
         let y_squared = x.pow(BigUint::from(3u32)) + S256FieldElement::new(7u32).unwrap();
         let y = y_squared.sqrt();
-        
+
         if y.num().bit(0) == is_odd {
             S256Point::new(x, y)
         } else {
             let other_y = S256FieldElement::new(0u32).unwrap() - y;
-            
+
             S256Point::new(x, other_y)
         }
     }
@@ -662,6 +683,69 @@ mod s256_point_tests {
         let s2 = BigUint::parse_bytes(s2_hex.as_bytes(), 16).unwrap();
         let sig2 = Signature { r: r2, s: s2 };
         assert!(public_key.verify(&z2, &sig2), "Signature 2 should be valid");
+    }
+
+    #[test]
+    fn test_sec_serialization() {
+        let g = G.clone();
+
+        // Test Uncompressed
+        let serialized_uncompressed = g.sec(Some(false));
+        assert_eq!(serialized_uncompressed.len(), 65);
+        assert_eq!(serialized_uncompressed[0], 0x04);
+
+        let parsed_uncompressed = S256Point::parse(&serialized_uncompressed).unwrap();
+        assert_eq!(parsed_uncompressed, g);
+
+        // Test Compressed
+        let serialized_compressed = g.sec(Some(true));
+        assert_eq!(serialized_compressed.len(), 33);
+        let marker = serialized_compressed[0];
+        assert!(marker == 0x02 || marker == 0x03);
+
+        // Check marker correctness
+        if g.y_num().unwrap().bit(0) {
+            // odd
+            assert_eq!(marker, 0x03);
+        } else {
+            assert_eq!(marker, 0x02);
+        }
+
+        let parsed_compressed = S256Point::parse(&serialized_compressed).unwrap();
+        assert_eq!(parsed_compressed, g);
+    }
+
+    #[test]
+    fn test_sec_serialization_known_key() {
+        // Public Key P
+        let px_hex = "887387e452b8eacc4acfde10d9aaf7f6d9a0f975aabb10d006e4da568744d06c";
+        let py_hex = "61de6d95231cd89026e286df3b6ae4a894a3378e393e93a0f45b666329a0ae34";
+        let px = BigUint::parse_bytes(px_hex.as_bytes(), 16).unwrap();
+        let py = BigUint::parse_bytes(py_hex.as_bytes(), 16).unwrap();
+        let p_x_el = S256FieldElement::new(px.clone()).unwrap();
+        let p_y_el = S256FieldElement::new(py.clone()).unwrap();
+        let public_key = S256Point::new(p_x_el, p_y_el).unwrap();
+
+        let px_bytes = to_32_bytes(&px);
+        let py_bytes = to_32_bytes(&py);
+
+        // Compressed
+        let mut expected_compressed = vec![0x02]; // py ends in 4 (even) => 0x02
+        expected_compressed.extend(&px_bytes);
+        assert_eq!(public_key.sec(Some(true)), expected_compressed);
+
+        // Uncompressed
+        let mut expected_uncompressed = vec![0x04];
+        expected_uncompressed.extend(&px_bytes);
+        expected_uncompressed.extend(&py_bytes);
+        assert_eq!(public_key.sec(Some(false)), expected_uncompressed);
+
+        // Round trip
+        assert_eq!(S256Point::parse(&expected_compressed).unwrap(), public_key);
+        assert_eq!(
+            S256Point::parse(&expected_uncompressed).unwrap(),
+            public_key
+        );
     }
 }
 

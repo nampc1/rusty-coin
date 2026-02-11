@@ -2,7 +2,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::sync::{Arc, LazyLock};
 
 use hmac::{Hmac, Mac};
-use num_bigint::BigUint;
+use num_bigint::{BigUint};
 use sha2::Sha256;
 
 use crate::elliptic_curve::{Point, PointError};
@@ -412,6 +412,41 @@ impl Signature {
         result.extend_from_slice(&s_bytes);
 
         result
+    }
+    
+    pub fn parse_der(der: &[u8]) -> Result<Self, &'static str> {
+        let mut cursor = 0;
+        
+        if der.len() < 2 { return Err("Too short"); }
+        if der[cursor] != 0x30 { return Err("Invalid format"); }
+        cursor += 1;
+
+        let len = der[cursor] as usize;
+        cursor += 1;
+        if len + 2 != der.len() { return Err("Invalid length"); }
+
+        if cursor >= der.len() || der[cursor] != 0x02 { return Err("Invalid r marker"); }
+        cursor += 1;
+
+        if cursor >= der.len() { return Err("Invalid r length byte"); }
+        let r_len = der[cursor] as usize;
+        cursor += 1;
+
+        if cursor + r_len > der.len() { return Err("Invalid r bytes"); }
+        let r = BigUint::from_bytes_be(&der[cursor..cursor + r_len]);
+        cursor += r_len;
+
+        if cursor >= der.len() || der[cursor] != 0x02 { return Err("Invalid s marker"); }
+        cursor += 1;
+
+        if cursor >= der.len() { return Err("Invalid s length byte"); }
+        let s_len = der[cursor] as usize;
+        cursor += 1;
+
+        if cursor + s_len > der.len() { return Err("Invalid s bytes"); }
+        let s = BigUint::from_bytes_be(&der[cursor..cursor + s_len]);
+
+        Ok(Signature { r, s })
     }
 }
 
@@ -907,5 +942,48 @@ mod signature_tests {
         // total = 2 + 1 + 2 + 1 = 6
         // 30 06 02 01 00 02 01 00
         assert_eq!(der, hex_to_bytes("3006020100020100"));
+    }
+
+    #[test]
+    fn test_parse_der_valid() {
+        let r_hex = "37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6";
+        let s_hex = "8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        let r = BigUint::parse_bytes(r_hex.as_bytes(), 16).unwrap();
+        let s = BigUint::parse_bytes(s_hex.as_bytes(), 16).unwrap();
+        
+        // This is a valid DER signature (from previous test)
+        let der_hex = "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        let der_bytes = hex_to_bytes(der_hex);
+
+        let sig = Signature::parse_der(&der_bytes).expect("Should parse valid DER");
+        assert_eq!(sig.r, r);
+        assert_eq!(sig.s, s);
+    }
+
+    #[test]
+    fn test_parse_der_roundtrip() {
+        let secret = BigUint::from(12345u32);
+        let pk = PrivateKey::new(secret);
+        let z = BigUint::from(99999u32);
+        
+        let sig = pk.sign(&z);
+        let serialized = sig.der();
+        let parsed = Signature::parse_der(&serialized).expect("Should parse generated signature");
+        
+        assert_eq!(sig.r, parsed.r);
+        assert_eq!(sig.s, parsed.s);
+    }
+
+    #[test]
+    fn test_parse_der_invalid_format() {
+        // Empty
+        assert!(Signature::parse_der(&[]).is_err());
+        
+        // Wrong marker (starts with 0x31 instead of 0x30)
+        let der_hex = "3145022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        assert!(Signature::parse_der(&hex_to_bytes(der_hex)).is_err());
+        
+        // Too short
+        assert!(Signature::parse_der(&[0x30, 0x00]).is_err());
     }
 }

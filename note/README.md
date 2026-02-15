@@ -15,3 +15,4 @@ This directory contains documents that record key design decisions and architect
 9. [Buffer Passing for Efficient Serialization](./09-buffer-passing-for-serialization.md)
 10. [Data Representation: Bytes vs. Encodings](./10-bytes-vs-encodings.md)
 11. [Bitcoin "CompactSize" Variable Integer (VarInt)](./11-compact-size-varint.md)
+12. [Transaction Malleability](./12-transaction-malleability.md)

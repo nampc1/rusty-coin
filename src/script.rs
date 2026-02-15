@@ -1,5 +1,8 @@
+use num_bigint::BigUint;
 use sha2::{Sha256, Digest};
 use ripemd::Ripemd160;
+
+use crate::secp256k1::{S256Point, Signature};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode {
@@ -45,7 +48,7 @@ impl Script {
         let mut cmds = Vec::new();
         let mut index: usize = 0;
         
-        if raw.len() == 0 {
+        if raw.is_empty() {
             return Ok(Script { cmds });
         }
         
@@ -79,7 +82,7 @@ impl Script {
     pub fn serialize(&self) -> Vec<u8> {
         let mut serialized: Vec<u8> = Vec::new();
         
-        if self.cmds.len() == 0 {
+        if self.cmds.is_empty() {
             return serialized;
         }
         
@@ -87,7 +90,7 @@ impl Script {
             match cmd {
                 Cmd::Push(bytes) => {
                     serialized.push(bytes.len() as u8);
-                    serialized.extend_from_slice(&bytes);
+                    serialized.extend_from_slice(bytes);
                 },
                 Cmd::Op(op) => {
                     serialized.push(*op as u8);
@@ -98,7 +101,12 @@ impl Script {
         serialized
     }
     
-    pub fn evaluate(&self) -> bool {
+    // HACK: In a real Bitcoin node, `z` is not passed in. Instead, the `evaluate`
+    // function would receive the transaction being spent and the input index.
+    // The `OP_CHECKSIG` opcode would then be responsible for serializing the
+    // transaction and hashing it (based on the signature's SIGHASH flag) to
+    // generate `z`. This simplified approach is used for learning purposes.
+    pub fn evaluate(&self, z: &BigUint) -> bool {
         let mut stack: Vec<Vec<u8>> = Vec::new();
         
         for cmd in &self.cmds {
@@ -134,7 +142,25 @@ impl Script {
                             }
                         },
                         OpCode::OpCheckSig => {
+                            let Some(pub_key_bytes) = stack.pop() else { return false; };
+                            let Some(raw_sig) = stack.pop() else { return false; };
                             
+                            let pub_key = match S256Point::parse(&pub_key_bytes) {
+                                Ok(pk) => pk,
+                                Err(_) => return false,
+                            };
+                            
+                            let signature_bytes = &raw_sig[..raw_sig.len() - 1];
+                            let hash_type_byte = raw_sig[raw_sig.len() - 1];
+                            assert_eq!(hash_type_byte, 1, "Only SIGHASH_ALL is supported");
+
+                            let Ok(signature) = Signature::parse_der(signature_bytes) else { return false; };
+                            
+                            if pub_key.verify(z, &signature) {
+                                stack.push(vec![1]);
+                            } else {
+                                stack.push(vec![]);
+                            }
                         },
                         OpCode::OpHash160 => {
                             let Some(data) = stack.pop() else { return false; };
@@ -149,13 +175,24 @@ impl Script {
             }
         }
         
-        true
+        if let Some(top) = stack.last() {
+            !top.is_empty()
+        } else {
+            false
+        }
+    }
+    
+    pub fn combine(&self, other: &Script) -> Script {
+        Script { 
+            cmds: self.cmds.iter().chain(&other.cmds).cloned().collect(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use num_bigint::BigUint;
 
     #[test]
     fn test_parse_op_only() {
@@ -227,16 +264,18 @@ mod tests {
 
     #[test]
     fn test_evaluate_simple_push() {
+        let z = BigUint::from(0u32);
         // Script: Push([0x01])
         // Stack: [[0x01]] -> Top is not empty -> True
         let script = Script {
             cmds: vec![Cmd::Push(vec![0x01])]
         };
-        assert!(script.evaluate());
+        assert!(script.evaluate(&z));
     }
 
     #[test]
     fn test_evaluate_op_dup() {
+        let z = BigUint::from(0u32);
         // Script: Push([0x01]), OpDup, OpEqual
         // 1. Push [0x01] -> Stack: [[0x01]]
         // 2. OpDup       -> Stack: [[0x01], [0x01]]
@@ -248,11 +287,12 @@ mod tests {
                 Cmd::Op(OpCode::OpEqual),
             ]
         };
-        assert!(script.evaluate());
+        assert!(script.evaluate(&z));
     }
 
     #[test]
     fn test_evaluate_op_equal_fail() {
+        let z = BigUint::from(0u32);
         // Script: Push([0x01]), Push([0x02]), OpEqual
         // 1. Push [0x01] -> Stack: [[0x01]]
         // 2. Push [0x02] -> Stack: [[0x01], [0x02]]
@@ -265,15 +305,16 @@ mod tests {
                 Cmd::Op(OpCode::OpEqual),
             ]
         };
-        assert!(!script.evaluate());
+        assert!(!script.evaluate(&z));
     }
     
     #[test]
     fn test_evaluate_empty_stack_fail() {
+        let z = BigUint::from(0u32);
         // Script: Empty
         // Stack: []
         // Result: False
         let script = Script { cmds: vec![] };
-        assert!(!script.evaluate());
+        assert!(!script.evaluate(&z));
     }
 }

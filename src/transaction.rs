@@ -1,6 +1,8 @@
 use crate::varint::encode_varint;
+use num_bigint::BigUint;
 use sha2::{Sha256, Digest};
 
+#[derive(Clone, Debug)]
 pub struct Tx {
    pub version: u32,
    pub tx_ins: Vec<TxIn>,
@@ -35,8 +37,29 @@ impl Tx {
         
         hash2.into()
     }
+    
+    pub fn sig_hash(&self, input_index: usize, script_pub_key: &[u8]) -> BigUint {
+        let mut tx_clone = self.clone();
+        
+        for tx_in in &mut tx_clone.tx_ins {
+            tx_in.script_sig = Vec::new();
+        }
+
+        tx_clone.tx_ins[input_index].script_sig = Vec::from(script_pub_key);
+        
+        let mut serialized = Vec::new();
+        tx_clone.serialize(&mut serialized);
+        
+        serialized.extend_from_slice(&1_u32.to_le_bytes());
+        
+        let hash1 = Sha256::digest(&serialized);
+        let hash2 = Sha256::digest(hash1);
+        
+        BigUint::from_bytes_be(&hash2)
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct TxIn {
     pub prev_tx_hash: [u8; 32],
     pub prev_index: u32,
@@ -55,6 +78,7 @@ impl TxIn {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct TxOut {
     pub amount: u64,
     pub script_pub_key: Vec<u8>
@@ -154,5 +178,40 @@ mod tests {
         ];
         
         assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_sig_hash() {
+        let tx = Tx {
+            version: 1,
+            tx_ins: vec![TxIn {
+                prev_tx_hash: [2u8; 32],
+                prev_index: 0,
+                script_sig: vec![],
+                sequence: 0xffffffff,
+            }],
+            tx_outs: vec![TxOut {
+                amount: 50,
+                script_pub_key: vec![3u8; 10],
+            }],
+            locktime: 0,
+        };
+
+        let prev_script_pub_key = vec![4u8; 25];
+
+        let actual_hash = tx.sig_hash(0, &prev_script_pub_key);
+
+        let mut tx_clone = tx.clone();
+        tx_clone.tx_ins[0].script_sig = prev_script_pub_key;
+
+        let mut serialized = Vec::new();
+        tx_clone.serialize(&mut serialized);
+        serialized.extend_from_slice(&1_u32.to_le_bytes());
+
+        let hash1 = Sha256::digest(&serialized);
+        let hash2 = Sha256::digest(hash1);
+        let expected_hash = BigUint::from_bytes_be(&hash2);
+
+        assert_eq!(actual_hash, expected_hash);
     }
 }

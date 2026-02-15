@@ -18,7 +18,7 @@ pub fn encode_varint(buffer: &mut Vec<u8>, i: u64) {
     }
 }
 
-pub fn read_varint(s: &Vec<u8>) -> Result<u64, &'static str> {
+pub fn read_varint(s: &[u8]) -> Result<u64, &'static str> {
     if s.is_empty() {
         return Err("Invalid VarInt: Data too short");
     }
@@ -28,17 +28,20 @@ pub fn read_varint(s: &Vec<u8>) -> Result<u64, &'static str> {
     if i == 0xfd {
         if s.len() < 3 { return Err("Invalid VarInt: Data too short"); }
         let bytes = s[1..3].try_into().map_err(|_| "VarInt conversion failed")?;
-        return Ok(u16::from_le_bytes(bytes) as u64);
+        
+        Ok(u16::from_le_bytes(bytes) as u64)
     } else if i == 0xfe {
         if s.len() < 5 { return Err("Invalid VarInt: Data too short"); }
         let bytes = s[1..5].try_into().map_err(|_| "VarInt conversion failed")?;
-        return Ok(u32::from_le_bytes(bytes) as u64);
+        
+        Ok(u32::from_le_bytes(bytes) as u64)
     } else if i == 0xff {
         if s.len() < 9 { return Err("Invalid VarInt: Data too short"); }
         let bytes = s[1..9].try_into().map_err(|_| "VarInt conversion failed")?;
-        return Ok(u64::from_le_bytes(bytes));
+        
+        Ok(u64::from_le_bytes(bytes))
     } else {
-        return Ok(i as u64);
+        Ok(i as u64)
     }
 }
 

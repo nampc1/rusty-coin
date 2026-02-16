@@ -39,7 +39,6 @@ pub struct Script {
 
 #[derive(Debug)]
 pub enum ScriptError {
-    InvalidScript,
     InvalidOpCode
 }
 
@@ -79,6 +78,7 @@ impl Script {
         Ok(Script { cmds })
     }
     
+    #[allow(dead_code)]
     pub fn serialize(&self) -> Vec<u8> {
         let mut serialized: Vec<u8> = Vec::new();
         
@@ -182,6 +182,7 @@ impl Script {
         }
     }
     
+    #[allow(dead_code)]
     pub fn combine(&self, other: &Script) -> Script {
         Script { 
             cmds: self.cmds.iter().chain(&other.cmds).cloned().collect(),

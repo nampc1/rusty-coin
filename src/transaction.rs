@@ -254,4 +254,115 @@ mod tests {
 
         assert_eq!(actual_hash, expected_hash);
     }
+
+    fn create_test_utxo_set() -> (Tx, UtxoSet) {
+        let prev_tx = Tx {
+            version: 1,
+            tx_ins: vec![],
+            tx_outs: vec![TxOut {
+                amount: 1000,
+                script_pub_key: vec![], // Script can be empty for these tests
+            }],
+            locktime: 0,
+        };
+        let prev_tx_hash = prev_tx.hash();
+
+        let mut utxos = UtxoSet::new();
+        utxos.insert((prev_tx_hash, 0), prev_tx.tx_outs[0].clone());
+
+        (prev_tx, utxos)
+    }
+
+    #[test]
+    fn test_verify_valid() {
+        let (prev_tx, utxos) = create_test_utxo_set();
+
+        let spending_tx = Tx {
+            version: 1,
+            tx_ins: vec![TxIn {
+                prev_tx_hash: prev_tx.hash(),
+                prev_index: 0,
+                // A script that pushes a non-empty vector will evaluate to true.
+                // Raw script for: Push([1])
+                script_sig: vec![0x01, 0x01],
+                sequence: 0xffffffff,
+            }],
+            tx_outs: vec![TxOut {
+                amount: 900,
+                script_pub_key: vec![],
+            }],
+            locktime: 0,
+        };
+
+        assert!(spending_tx.verify(&utxos));
+    }
+
+    #[test]
+    fn test_verify_insufficient_funds() {
+        let (prev_tx, utxos) = create_test_utxo_set();
+
+        let spending_tx = Tx {
+            version: 1,
+            tx_ins: vec![TxIn {
+                prev_tx_hash: prev_tx.hash(),
+                prev_index: 0,
+                script_sig: vec![0x01, 0x01],
+                sequence: 0xffffffff,
+            }],
+            tx_outs: vec![TxOut {
+                amount: 1100, // More than the 1000 available in the input
+                script_pub_key: vec![],
+            }],
+            locktime: 0,
+        };
+
+        assert!(!spending_tx.verify(&utxos));
+    }
+
+    #[test]
+    fn test_verify_spending_nonexistent_utxo() {
+        let (_prev_tx, _utxos) = create_test_utxo_set();
+        let empty_utxos = UtxoSet::new();
+
+        let spending_tx = Tx {
+            version: 1,
+            tx_ins: vec![TxIn {
+                prev_tx_hash: [99u8; 32], // A random, non-existent hash
+                prev_index: 0,
+                script_sig: vec![0x01, 0x01],
+                sequence: 0xffffffff,
+            }],
+            tx_outs: vec![TxOut {
+                amount: 900,
+                script_pub_key: vec![],
+            }],
+            locktime: 0,
+        };
+
+        assert!(!spending_tx.verify(&empty_utxos));
+    }
+
+    #[test]
+    fn test_verify_invalid_script() {
+        let (prev_tx, utxos) = create_test_utxo_set();
+
+        let spending_tx = Tx {
+            version: 1,
+            tx_ins: vec![TxIn {
+                prev_tx_hash: prev_tx.hash(),
+                prev_index: 0,
+                // A script that evaluates to false.
+                // Raw script for: Push(2), Push(3), OpEqual
+                script_sig: vec![0x01, 0x02, 0x01, 0x03, 0x87],
+                sequence: 0xffffffff,
+            }],
+            tx_outs: vec![TxOut {
+                amount: 900,
+                script_pub_key: vec![],
+            }],
+            locktime: 0,
+        };
+
+        assert!(!spending_tx.verify(&utxos));
+    }
 }

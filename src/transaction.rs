@@ -1,6 +1,10 @@
-use crate::varint::encode_varint;
+use std::{collections::HashMap};
+
+use crate::{script::Script, varint::encode_varint};
 use num_bigint::BigUint;
 use sha2::{Sha256, Digest};
+
+pub type UtxoSet = HashMap<([u8; 32], u32), TxOut>;
 
 #[derive(Clone, Debug)]
 pub struct Tx {
@@ -56,6 +60,42 @@ impl Tx {
         let hash2 = Sha256::digest(hash1);
         
         BigUint::from_bytes_be(&hash2)
+    }
+    
+    pub fn verify(&self, utxos: &UtxoSet) -> bool {
+        let mut prev_utxos = Vec::new();
+        
+        for tx_in in self.tx_ins.iter() {
+            let Some(prev_utxo) = utxos.get(&(tx_in.prev_tx_hash, tx_in.prev_index)) else { return false; };
+            
+            prev_utxos.push(prev_utxo);
+        }
+        
+        let total_input_amount: u64 = prev_utxos.iter().map(|tx_out| tx_out.amount).sum();
+        let total_output_amount: u64 = self.tx_outs.iter().map(|tx_out| tx_out.amount).sum();
+        
+        if total_input_amount < total_output_amount {
+            return false;
+        }
+        
+        for (index, tx_in) in self.tx_ins.iter().enumerate() {
+            let prev_script_pub_key = &prev_utxos[index].script_pub_key;
+            
+            let script_concat: Vec<u8> = tx_in.script_sig.iter().chain(prev_script_pub_key).cloned().collect();
+            
+            let parsed_script = match Script::parse(&script_concat) {
+                Ok(script) => script,
+                Err(_) => return false,
+            };
+            
+            let z = self.sig_hash(index, prev_script_pub_key);
+            
+            if !parsed_script.evaluate(&z) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 }
 

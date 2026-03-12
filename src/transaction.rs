@@ -6,12 +6,29 @@ use sha2::{Sha256, Digest};
 
 pub type UtxoSet = HashMap<([u8; 32], u32), TxOut>;
 
+pub trait Transaction {
+    fn hash(&self) -> [u8; 32];
+}
+
 #[derive(Clone, Debug)]
 pub struct Tx {
    pub version: u32,
    pub tx_ins: Vec<TxIn>,
    pub tx_outs: Vec<TxOut>,
    pub locktime: u32
+}
+
+impl Transaction for Tx {
+    fn hash(&self) -> [u8; 32] {
+        let mut serialized = Vec::new();
+        
+        self.serialize(&mut serialized);
+        
+        let hash1 = Sha256::digest(serialized);
+        let hash2 = Sha256::digest(hash1);
+        
+        hash2.into()
+    }
 }
 
 impl Tx {
@@ -29,17 +46,6 @@ impl Tx {
         }
         
         serialized.extend_from_slice(&self.locktime.to_le_bytes());
-    }
-    
-    pub fn hash(&self) -> [u8; 32] {
-        let mut serialized = Vec::new();
-        
-        self.serialize(&mut serialized);
-        
-        let hash1 = Sha256::digest(serialized);
-        let hash2 = Sha256::digest(hash1);
-        
-        hash2.into()
     }
     
     pub fn sig_hash(&self, input_index: usize, script_pub_key: &[u8]) -> BigUint {

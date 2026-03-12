@@ -1,4 +1,4 @@
-use crate::transaction::Tx;
+use crate::transaction::{Transaction};
 use num_bigint::BigUint;
 use sha2::{Sha256, Digest};
 
@@ -53,21 +53,45 @@ impl BlockHeader {
     }
 }
 
-pub struct Block {
+pub struct Block<T: Transaction> {
     header: BlockHeader,
-    txs: Vec<Tx>
+    txs: Vec<T>
 }
 
-impl Block {
-    pub fn new(prev_block_hash: [u8; 32], timestamp: u32, bits: u32, txs: Vec<Tx>) -> Self {
-        todo!()
+impl<T: Transaction> Block<T> {
+    pub fn new(prev_block_hash: [u8; 32], timestamp: u32, bits: u32, txs: Vec<T>) -> Self {
+        let merkle_root = Self::calculate_merkle_root(&txs);
+        let header = BlockHeader {
+            version: 1,
+            prev_block_hash,
+            merkle_root,
+            timestamp,
+            bits,
+            nonce: 0
+        };
+        
+        Block {
+            header,
+            txs 
+        }
     }
 
     pub fn is_valid(&self) -> bool {
-        todo!()
+        let target = BlockHeader::bits_to_target(self.header.bits);
+        
+        if BigUint::from_bytes_be(&self.header.hash()) >= target {
+            return false;
+        }
+        
+        let expected_merkle_root = Self::calculate_merkle_root(&self.txs);
+        if expected_merkle_root != self.header.merkle_root {
+            return false;
+        }
+        
+        true
     }
 
-    fn calculate_merkle_root(txs: &[Tx]) -> [u8; 32] {
+    fn calculate_merkle_root(txs: &[T]) -> [u8; 32] {
         if txs.is_empty() {
             panic!("Cannot compute merkle root without transactions");
         }
@@ -135,7 +159,7 @@ mod tests {
         let h1 = d_sha256(b"tx1");
         let hashes = vec![h1];
         // For a single hash, the root is the hash itself.
-        let root = Block::merkle_root_from_hashes(&hashes);
+        let root = Block::<MockTx>::merkle_root_from_hashes(&hashes);
         assert_eq!(root, h1);
     }
 
@@ -151,7 +175,7 @@ mod tests {
         concat[32..64].copy_from_slice(&h2);
         let expected_root = d_sha256(&concat);
 
-        let root = Block::merkle_root_from_hashes(&hashes);
+        let root = Block::<MockTx>::merkle_root_from_hashes(&hashes);
         assert_eq!(root, expected_root);
     }
 
@@ -182,7 +206,7 @@ mod tests {
         concat_final[32..64].copy_from_slice(&h33);
         let expected_root = d_sha256(&concat_final);
 
-        let root = Block::merkle_root_from_hashes(&hashes);
+        let root = Block::<MockTx>::merkle_root_from_hashes(&hashes);
         assert_eq!(root, expected_root);
     }
 
@@ -214,7 +238,85 @@ mod tests {
         concat_final[32..64].copy_from_slice(&h34);
         let expected_root = d_sha256(&concat_final);
 
-        let root = Block::merkle_root_from_hashes(&hashes);
+        let root = Block::<MockTx>::merkle_root_from_hashes(&hashes);
         assert_eq!(root, expected_root);
+    }
+    
+    // Mock transaction struct for testing purposes.
+    #[derive(Clone)]
+    struct MockTx {
+        id: Vec<u8>,
+    }
+
+    impl MockTx {
+        fn new(id: &[u8]) -> Self {
+            MockTx { id: id.to_vec() }
+        }
+    }
+
+    // A mock implementation of the Tx trait for our MockTx.
+    // This is a simplified stand-in for the real transaction logic.
+    impl crate::transaction::Transaction for MockTx {
+        fn hash(&self) -> [u8; 32] {
+            d_sha256(&self.id)
+        }
+    }
+
+    fn create_test_block(txs: Vec<MockTx>) -> Block<MockTx> {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let prev_block_hash = [0; 32];
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32;
+        // A high `bits` value creates a very easy target.
+        let bits = 0x207fffff; 
+
+        Block::new(prev_block_hash, timestamp, bits, txs)
+    }
+
+    #[test]
+    fn test_new_block_creation() {
+        let tx1 = MockTx::new(b"tx1");
+        let tx2 = MockTx::new(b"tx2");
+        let txs = vec![tx1.clone(), tx2.clone()];
+        
+        let block = create_test_block(txs);
+        
+        let h1 = tx1.hash();
+        let h2 = tx2.hash();
+        let mut concat = [0u8; 64];
+        concat[0..32].copy_from_slice(&h1);
+        concat[32..64].copy_from_slice(&h2);
+        let expected_merkle_root = d_sha256(&concat);
+
+        assert_eq!(block.header.version, 1);
+        assert_eq!(block.header.prev_block_hash, [0; 32]);
+        assert_eq!(block.header.merkle_root, expected_merkle_root);
+        assert_eq!(block.header.nonce, 0);
+        assert_eq!(block.txs.len(), 2);
+    }
+    
+    #[test]
+    fn test_mining_and_is_valid() {
+        let tx = MockTx::new(b"some tx");
+        let mut block = create_test_block(vec![tx]);
+
+        // 1. Before mining, the block should be invalid because PoW is not met.
+        // We set a difficult target to ensure the initial nonce is invalid.
+        block.header.bits = 0x1e7fffff; // A much harder target
+        assert!(!block.is_valid(), "Block should be invalid before mining");
+
+        // 2. Mine the block.
+        block.mine();
+        
+        // 3. After mining, the block should be valid.
+        assert!(block.is_valid(), "Block should be valid after mining");
+
+        // 4. Test invalid Merkle root
+        let mut invalid_block = block;
+        invalid_block.header.merkle_root[5] = !invalid_block.header.merkle_root[5]; // Corrupt the root
+        assert!(!invalid_block.is_valid(), "Block with invalid merkle root should be invalid");
     }
 }

@@ -1,107 +1,115 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use crate::{script::Script, varint::encode_varint};
 use num_bigint::BigUint;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 pub type UtxoSet = HashMap<([u8; 32], u32), TxOut>;
 
 pub trait Transaction {
     fn hash(&self) -> [u8; 32];
+    fn serialize(&self, serialized: &mut Vec<u8>);
 }
 
 #[derive(Clone, Debug)]
 pub struct Tx {
-   pub version: u32,
-   pub tx_ins: Vec<TxIn>,
-   pub tx_outs: Vec<TxOut>,
-   pub locktime: u32
+    pub version: u32,
+    pub tx_ins: Vec<TxIn>,
+    pub tx_outs: Vec<TxOut>,
+    pub locktime: u32,
 }
 
 impl Transaction for Tx {
     fn hash(&self) -> [u8; 32] {
         let mut serialized = Vec::new();
-        
+
         self.serialize(&mut serialized);
-        
+
         let hash1 = Sha256::digest(serialized);
         let hash2 = Sha256::digest(hash1);
-        
+
         hash2.into()
     }
-}
 
-impl Tx {
-    pub fn serialize(&self, serialized: &mut Vec<u8>) {
+    fn serialize(&self, serialized: &mut Vec<u8>) {
         serialized.extend_from_slice(&self.version.to_le_bytes());
-        
+
         encode_varint(serialized, self.tx_ins.len() as u64);
         for tx_in in &self.tx_ins {
             tx_in.serialize(serialized);
         }
-        
+
         encode_varint(serialized, self.tx_outs.len() as u64);
         for tx_out in &self.tx_outs {
             tx_out.serialize(serialized);
         }
-        
+
         serialized.extend_from_slice(&self.locktime.to_le_bytes());
     }
-    
+}
+
+impl Tx {
     pub fn sig_hash(&self, input_index: usize, script_pub_key: &[u8]) -> BigUint {
         let mut tx_clone = self.clone();
-        
+
         for tx_in in &mut tx_clone.tx_ins {
             tx_in.script_sig = Vec::new();
         }
 
         tx_clone.tx_ins[input_index].script_sig = Vec::from(script_pub_key);
-        
+
         let mut serialized = Vec::new();
         tx_clone.serialize(&mut serialized);
-        
+
         serialized.extend_from_slice(&1_u32.to_le_bytes());
-        
+
         let hash1 = Sha256::digest(&serialized);
         let hash2 = Sha256::digest(hash1);
-        
+
         BigUint::from_bytes_be(&hash2)
     }
-    
+
     pub fn verify(&self, utxos: &UtxoSet) -> bool {
         let mut prev_utxos = Vec::new();
-        
+
         for tx_in in self.tx_ins.iter() {
-            let Some(prev_utxo) = utxos.get(&(tx_in.prev_tx_hash, tx_in.prev_index)) else { return false; };
-            
+            let Some(prev_utxo) = utxos.get(&(tx_in.prev_tx_hash, tx_in.prev_index)) else {
+                return false;
+            };
+
             prev_utxos.push(prev_utxo);
         }
-        
+
         let total_input_amount: u64 = prev_utxos.iter().map(|tx_out| tx_out.amount).sum();
         let total_output_amount: u64 = self.tx_outs.iter().map(|tx_out| tx_out.amount).sum();
-        
+
         if total_input_amount < total_output_amount {
             return false;
         }
-        
+
         for (index, tx_in) in self.tx_ins.iter().enumerate() {
             let prev_script_pub_key = &prev_utxos[index].script_pub_key;
-            
-            let script_concat: Vec<u8> = tx_in.script_sig.iter().chain(prev_script_pub_key).cloned().collect();
-            
+
+            let script_concat: Vec<u8> = tx_in
+                .script_sig
+                .iter()
+                .chain(prev_script_pub_key)
+                .cloned()
+                .collect();
+
             let parsed_script = match Script::parse(&script_concat) {
                 Ok(script) => script,
                 Err(_) => return false,
             };
-            
+
             let z = self.sig_hash(index, prev_script_pub_key);
-            
+
             if !parsed_script.evaluate(&z) {
                 return false;
             }
         }
-        
-        return true;
+
+        true
     }
 }
 
@@ -110,7 +118,7 @@ pub struct TxIn {
     pub prev_tx_hash: [u8; 32],
     pub prev_index: u32,
     pub script_sig: Vec<u8>,
-    pub sequence: u32
+    pub sequence: u32,
 }
 
 impl TxIn {
@@ -127,7 +135,7 @@ impl TxIn {
 #[derive(Clone, Debug)]
 pub struct TxOut {
     pub amount: u64,
-    pub script_pub_key: Vec<u8>
+    pub script_pub_key: Vec<u8>,
 }
 
 impl TxOut {
@@ -216,13 +224,8 @@ mod tests {
 
         // Version (4) + InCount(1 byte: 0) + OutCount(1 byte: 0) + Locktime (4)
         // 01 00 00 00 | 00 | 00 | 00 00 00 00
-        let expected = vec![
-            0x01, 0x00, 0x00, 0x00,
-            0x00,
-            0x00,
-            0x00, 0x00, 0x00, 0x00
-        ];
-        
+        let expected = vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
         assert_eq!(serialized, expected);
     }
 

@@ -5,40 +5,47 @@
 
 pub fn encode_varint(buffer: &mut Vec<u8>, i: u64) {
     if i < 0xfd {
-       buffer.push(i as u8);
+        buffer.push(i as u8);
     } else if i < 0x10000 {
-       buffer.push(0xfd); 
-       buffer.extend_from_slice(&(i as u16).to_le_bytes());
+        buffer.push(0xfd);
+        buffer.extend_from_slice(&(i as u16).to_le_bytes());
     } else if i < 0x100000000 {
-        buffer.push(0xfe); 
+        buffer.push(0xfe);
         buffer.extend_from_slice(&(i as u32).to_le_bytes());
     } else {
-        buffer.push(0xff); 
+        buffer.push(0xff);
         buffer.extend_from_slice(&i.to_le_bytes());
     }
 }
 
+#[allow(dead_code)]
 pub fn read_varint(s: &[u8]) -> Result<u64, &'static str> {
     if s.is_empty() {
         return Err("Invalid VarInt: Data too short");
     }
 
     let i = s[0];
-    
+
     if i == 0xfd {
-        if s.len() < 3 { return Err("Invalid VarInt: Data too short"); }
+        if s.len() < 3 {
+            return Err("Invalid VarInt: Data too short");
+        }
         let bytes = s[1..3].try_into().map_err(|_| "VarInt conversion failed")?;
-        
+
         Ok(u16::from_le_bytes(bytes) as u64)
     } else if i == 0xfe {
-        if s.len() < 5 { return Err("Invalid VarInt: Data too short"); }
+        if s.len() < 5 {
+            return Err("Invalid VarInt: Data too short");
+        }
         let bytes = s[1..5].try_into().map_err(|_| "VarInt conversion failed")?;
-        
+
         Ok(u32::from_le_bytes(bytes) as u64)
     } else if i == 0xff {
-        if s.len() < 9 { return Err("Invalid VarInt: Data too short"); }
+        if s.len() < 9 {
+            return Err("Invalid VarInt: Data too short");
+        }
         let bytes = s[1..9].try_into().map_err(|_| "VarInt conversion failed")?;
-        
+
         Ok(u64::from_le_bytes(bytes))
     } else {
         Ok(i as u64)
@@ -79,6 +86,9 @@ mod tests {
         // Case 6: > u32 (9 bytes)
         let mut buf = Vec::new();
         encode_varint(&mut buf, 4294967296);
-        assert_eq!(buf, vec![0xff, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            buf,
+            vec![0xff, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]
+        );
     }
 }

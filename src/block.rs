@@ -1,6 +1,6 @@
-use crate::transaction::{Transaction};
+use crate::transaction::Transaction;
 use num_bigint::BigUint;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 pub struct BlockHeader {
     pub version: u32,
@@ -14,48 +14,48 @@ pub struct BlockHeader {
 impl BlockHeader {
     pub fn serialize(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(80); // Header is always 80 bytes
-        
+
         result.extend_from_slice(&self.version.to_le_bytes());
         result.extend_from_slice(&self.prev_block_hash);
         result.extend_from_slice(&self.merkle_root);
         result.extend_from_slice(&self.timestamp.to_le_bytes());
         result.extend_from_slice(&self.bits.to_le_bytes());
         result.extend_from_slice(&self.nonce.to_le_bytes());
-        
+
         result
     }
-    
+
     pub fn hash(&self) -> [u8; 32] {
         let serialized_header = self.serialize();
-        
+
         let hash1 = Sha256::digest(serialized_header);
         let hash2 = Sha256::digest(hash1);
-        
+
         hash2.into()
     }
-    
+
     pub fn bits_to_target(bits: u32) -> BigUint {
         let exponent = (bits >> 24) as u8;
         let coef = BigUint::from(bits & 0x00FFFFFF);
         let shift = 8 * (exponent as u32 - 3);
-        
+
         coef << shift
     }
-    
+
     pub fn mine(&mut self) {
         let target = Self::bits_to_target(self.bits);
-        
+
         while BigUint::from_bytes_be(&self.hash()) >= target {
             self.nonce += 1;
         }
-        
+
         println!("Mined! Nonce {}", self.nonce);
     }
 }
 
 pub struct Block<T: Transaction> {
     header: BlockHeader,
-    txs: Vec<T>
+    txs: Vec<T>,
 }
 
 impl<T: Transaction> Block<T> {
@@ -67,27 +67,24 @@ impl<T: Transaction> Block<T> {
             merkle_root,
             timestamp,
             bits,
-            nonce: 0
+            nonce: 0,
         };
-        
-        Block {
-            header,
-            txs 
-        }
+
+        Block { header, txs }
     }
 
     pub fn is_valid(&self) -> bool {
         let target = BlockHeader::bits_to_target(self.header.bits);
-        
+
         if BigUint::from_bytes_be(&self.header.hash()) >= target {
             return false;
         }
-        
+
         let expected_merkle_root = Self::calculate_merkle_root(&self.txs);
         if expected_merkle_root != self.header.merkle_root {
             return false;
         }
-        
+
         true
     }
 
@@ -95,12 +92,12 @@ impl<T: Transaction> Block<T> {
         if txs.is_empty() {
             panic!("Cannot compute merkle root without transactions");
         }
-        
+
         let hashes: Vec<[u8; 32]> = txs.iter().map(|tx| tx.hash()).collect();
-        
+
         Self::merkle_root_from_hashes(&hashes)
     }
-    
+
     fn merkle_root_from_hashes(hashes: &[[u8; 32]]) -> [u8; 32] {
         if hashes.is_empty() {
             panic!("Cannot compute merkle root without hashes");
@@ -109,16 +106,16 @@ impl<T: Transaction> Block<T> {
         if hashes.len() == 1 {
             return hashes[0];
         }
-        
+
         let mut current_level: Vec<[u8; 32]> = hashes.to_vec();
 
         loop {
             let mut next_level: Vec<[u8; 32]> = Vec::new();
-            
+
             for chunk in current_level.chunks(2) {
                 let first_hash = chunk.first().unwrap();
                 let mut concat_hash = [0u8; 64];
-                
+
                 if let Some(second_hash) = chunk.last() {
                     concat_hash[0..32].copy_from_slice(first_hash);
                     concat_hash[32..64].copy_from_slice(second_hash);
@@ -126,12 +123,12 @@ impl<T: Transaction> Block<T> {
                     concat_hash[0..32].copy_from_slice(first_hash);
                     concat_hash[32..64].copy_from_slice(first_hash);
                 }
-                
+
                 let hash1 = Sha256::digest(concat_hash);
                 let hash2 = Sha256::digest(hash1);
                 next_level.push(hash2.into());
             }
-            
+
             if next_level.len() == 1 {
                 return next_level[0];
             } else {
@@ -139,7 +136,7 @@ impl<T: Transaction> Block<T> {
             }
         }
     }
-    
+
     pub fn mine(&mut self) {
         self.header.mine();
     }
@@ -198,7 +195,7 @@ mod tests {
         concat_3_3[0..32].copy_from_slice(&h3);
         concat_3_3[32..64].copy_from_slice(&h3);
         let h33 = d_sha256(&concat_3_3);
-        
+
         // --- Level 2 ---
         // Hash of (h12 + h33)
         let mut concat_final = [0u8; 64];
@@ -230,7 +227,7 @@ mod tests {
         concat_3_4[0..32].copy_from_slice(&h3);
         concat_3_4[32..64].copy_from_slice(&h4);
         let h34 = d_sha256(&concat_3_4);
-        
+
         // --- Level 2 ---
         // Hash of (h12 + h34)
         let mut concat_final = [0u8; 64];
@@ -241,7 +238,7 @@ mod tests {
         let root = Block::<MockTx>::merkle_root_from_hashes(&hashes);
         assert_eq!(root, expected_root);
     }
-    
+
     // Mock transaction struct for testing purposes.
     #[derive(Clone)]
     struct MockTx {
@@ -271,7 +268,7 @@ mod tests {
             .unwrap()
             .as_secs() as u32;
         // A high `bits` value creates a very easy target.
-        let bits = 0x207fffff; 
+        let bits = 0x207fffff;
 
         Block::new(prev_block_hash, timestamp, bits, txs)
     }
@@ -281,9 +278,9 @@ mod tests {
         let tx1 = MockTx::new(b"tx1");
         let tx2 = MockTx::new(b"tx2");
         let txs = vec![tx1.clone(), tx2.clone()];
-        
+
         let block = create_test_block(txs);
-        
+
         let h1 = tx1.hash();
         let h2 = tx2.hash();
         let mut concat = [0u8; 64];
@@ -297,7 +294,7 @@ mod tests {
         assert_eq!(block.header.nonce, 0);
         assert_eq!(block.txs.len(), 2);
     }
-    
+
     #[test]
     fn test_mining_and_is_valid() {
         let tx = MockTx::new(b"some tx");
@@ -310,13 +307,16 @@ mod tests {
 
         // 2. Mine the block.
         block.mine();
-        
+
         // 3. After mining, the block should be valid.
         assert!(block.is_valid(), "Block should be valid after mining");
 
         // 4. Test invalid Merkle root
         let mut invalid_block = block;
         invalid_block.header.merkle_root[5] = !invalid_block.header.merkle_root[5]; // Corrupt the root
-        assert!(!invalid_block.is_valid(), "Block with invalid merkle root should be invalid");
+        assert!(
+            !invalid_block.is_valid(),
+            "Block with invalid merkle root should be invalid"
+        );
     }
 }

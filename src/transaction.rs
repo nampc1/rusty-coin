@@ -9,6 +9,7 @@ pub type UtxoSet = HashMap<([u8; 32], u32), TxOut>;
 pub trait Transaction {
     fn hash(&self) -> [u8; 32];
     fn serialize(&self, serialized: &mut Vec<u8>);
+    fn deserialize(serialized: &[u8]);
 }
 
 #[derive(Clone, Debug)]
@@ -45,6 +46,10 @@ impl Transaction for Tx {
         }
 
         serialized.extend_from_slice(&self.locktime.to_le_bytes());
+    }
+
+    fn deserialize(serialized: &[u8]) {
+        todo!()
     }
 }
 

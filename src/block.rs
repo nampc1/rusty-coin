@@ -1,4 +1,4 @@
-use crate::transaction::Transaction;
+use crate::{transaction::Transaction, varint::encode_varint};
 use num_bigint::BigUint;
 use sha2::{Digest, Sha256};
 
@@ -12,21 +12,23 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut result = Vec::with_capacity(80); // Header is always 80 bytes
+    pub fn serialize(&self, serialized: &mut Vec<u8>) {
+        serialized.extend_from_slice(&self.version.to_le_bytes());
+        serialized.extend_from_slice(&self.prev_block_hash);
+        serialized.extend_from_slice(&self.merkle_root);
+        serialized.extend_from_slice(&self.timestamp.to_le_bytes());
+        serialized.extend_from_slice(&self.bits.to_le_bytes());
+        serialized.extend_from_slice(&self.nonce.to_le_bytes());
+    }
 
-        result.extend_from_slice(&self.version.to_le_bytes());
-        result.extend_from_slice(&self.prev_block_hash);
-        result.extend_from_slice(&self.merkle_root);
-        result.extend_from_slice(&self.timestamp.to_le_bytes());
-        result.extend_from_slice(&self.bits.to_le_bytes());
-        result.extend_from_slice(&self.nonce.to_le_bytes());
-
-        result
+    pub fn deserialize(serialized: &[u8]) -> BlockHeader {
+        todo!()
     }
 
     pub fn hash(&self) -> [u8; 32] {
-        let serialized_header = self.serialize();
+        let mut serialized_header = Vec::new();
+
+        self.serialize(&mut serialized_header);
 
         let hash1 = Sha256::digest(serialized_header);
         let hash2 = Sha256::digest(hash1);
@@ -139,6 +141,27 @@ impl<T: Transaction> Block<T> {
 
     pub fn mine(&mut self) {
         self.header.mine();
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut serialized = Vec::new();
+
+        self.header.serialize(&mut serialized);
+        encode_varint(&mut serialized, self.txs.len() as u64);
+
+        for tx in &self.txs {
+            tx.serialize(&mut serialized);
+        }
+
+        serialized
+    }
+    
+    pub fn deserialized(serialized: &[u8]) -> Self {
+        todo!()
+    }
+
+    pub fn hash(&self) -> [u8; 32] {
+        self.header.hash()
     }
 }
 
